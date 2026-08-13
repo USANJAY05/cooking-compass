@@ -8,7 +8,10 @@ authors = [
 ]
 requires-python = ">=3.14"
 dependencies = [
+    "asyncmy>=0.2.14",
+    "cryptography>=50.0.0",
     "fastapi>=0.141.1",
+    "python-dotenv>=1.2.2",
     "sqlalchemy>=2.0.52",
 ]
 
