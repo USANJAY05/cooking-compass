@@ -12,6 +12,8 @@ dependencies = [
     "fastapi>=0.141.1",
     "httpx>=0.28.1",
     "python-jose>=3.5.0",
+    "asyncmy>=0.2.14",
+    "cryptography>=50.0.0",
     "sqlalchemy>=2.0.52",
     "uvicorn>=0.52.1",
 ]
