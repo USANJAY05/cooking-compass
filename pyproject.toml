@@ -16,6 +16,8 @@ dependencies = [
     "cryptography>=50.0.0",
     "sqlalchemy>=2.0.52",
     "uvicorn>=0.52.1",
+    "redis>=8.1.0",
+    "greenlet>=3.5.5",
 ]
 
 [project.scripts]

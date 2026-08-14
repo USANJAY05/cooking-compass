@@ -1,15 +1,35 @@
-from fastapi import FastAPI
-from dotenv import load_dotenv
 import os
+from contextlib import asynccontextmanager
 
-from cooking_compass.routes.router import router
+from dotenv import load_dotenv
+from fastapi import FastAPI
 
-load_dotenv()
+from cooking_compass.core.db import Base, engine
+from cooking_compass.models import recipe, users
 
-app = FastAPI()
-app.include_router(router)
+load_dotenv(".env.dev")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    print("Registered tables:", Base.metadata.tables.keys())
+
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    print("Database tables created successfully.")
+
+    yield
+
+    await engine.dispose()
+
+
+app = FastAPI(
+    title="Cooking Compass",
+    lifespan=lifespan,
+)
 
 
 @app.get("/")
-def home():
-    return f"Welcome to {os.getenv('APP_NAME')}"
+async def home():
+    return f"Welcome to {os.getenv('APP_NAME', 'Cooking Compass')}"

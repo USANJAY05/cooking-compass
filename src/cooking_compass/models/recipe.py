@@ -12,7 +12,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.mysql import BIGINT, INTEGER, TEXT
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from src.cooking_compass.core.db import Base
+from cooking_compass.core.db import Base
 
 
 class Recipe(Base):

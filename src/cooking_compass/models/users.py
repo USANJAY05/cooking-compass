@@ -4,7 +4,7 @@ from sqlalchemy import String, TIMESTAMP, text
 from sqlalchemy.dialects.mysql import BIGINT
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from src.cooking_compass.core.db import Base
+from cooking_compass.core.db import Base
 
 
 class User(Base):
