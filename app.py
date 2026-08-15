@@ -6,6 +6,7 @@ from fastapi import FastAPI
 
 from cooking_compass.core.db import Base, engine
 from cooking_compass import models
+from cooking_compass.routes.router import router
 
 
 load_dotenv(".env.dev")
@@ -30,6 +31,8 @@ app = FastAPI(
     title="Cooking Compass",
     lifespan=lifespan,
 )
+
+app.include_router(router)
 
 
 @app.get("/")
