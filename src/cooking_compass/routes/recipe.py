@@ -18,6 +18,9 @@ from cooking_compass.schema.recipe.response_schema import (
     RecipeSearchResponse,
 )
 
+from cooking_compass.service.recipe.create_recipe import create_recipe_service
+
+from cooking_compass.utils.check_user_exist import user_exist
 
 router = APIRouter(
     prefix="/recipes",
@@ -96,14 +99,16 @@ def get_recipe(
 # ---------------------------------------------------------
 @router.post(
     "/",
-    response_model=RecipeDetailResponse,
+    # response_model=RecipeDetailResponse,
     status_code=status.HTTP_201_CREATED,
 )
+@user_exist
 def create_recipe(
     request: CreateRecipeRequest,
     current_user: dict = Depends(get_current_user),
 ):
-    return "create recipe"
+    
+    return create_recipe_service(request, current_user)
 
 
 # ---------------------------------------------------------
