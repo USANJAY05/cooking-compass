@@ -1,17 +1,22 @@
-from datetime import datetime
+from typing import TYPE_CHECKING
 
-from sqlalchemy import String, TIMESTAMP, text
-from sqlalchemy.dialects.mysql import BIGINT
+from sqlalchemy import String, BigInteger, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from cooking_compass.core.db import Base
+from .base import Base, TimestampMixin
 
 
-class User(Base):
+if TYPE_CHECKING:
+    from .recipe import Recipe
+    from .recipe_ratings import RecipeRating
+    from .routines import Routine
+
+
+class User(TimestampMixin, Base):
     __tablename__ = "users"
 
     id: Mapped[int] = mapped_column(
-        BIGINT(unsigned=True),
+        BigInteger,
         primary_key=True,
         autoincrement=True,
     )
@@ -30,23 +35,20 @@ class User(Base):
     email: Mapped[str | None] = mapped_column(
         String(255),
         nullable=True,
-        unique=True,
-    )
-
-    created_at: Mapped[datetime] = mapped_column(
-        TIMESTAMP,
-        nullable=False,
-        server_default=text("CURRENT_TIMESTAMP"),
-    )
-
-    updated_at: Mapped[datetime] = mapped_column(
-        TIMESTAMP,
-        nullable=False,
-        server_default=text("CURRENT_TIMESTAMP"),
-        server_onupdate=text("CURRENT_TIMESTAMP"),
+        unique=True
     )
 
     recipes: Mapped[list["Recipe"]] = relationship(
         "Recipe",
+        back_populates="user",
+    )
+
+    ratings: Mapped[list["RecipeRating"]] = relationship(
+        "RecipeRating",
+        back_populates="user",
+    )
+
+    routines: Mapped[list["Routine"]] = relationship(
+        "Routine",
         back_populates="user",
     )

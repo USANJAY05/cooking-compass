@@ -1,31 +1,47 @@
+from typing import TYPE_CHECKING
 from datetime import datetime
+from decimal import Decimal
 
 from sqlalchemy import (
-    DECIMAL,
+    BigInteger,
+    String,
+    Text,
+    Integer,
+    Numeric,
     Enum,
+    TIMESTAMP,
     ForeignKey,
     Index,
-    String,
-    TIMESTAMP,
-    text,
+    text
 )
-from sqlalchemy.dialects.mysql import BIGINT, INTEGER, TEXT
+
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from cooking_compass.core.db import Base
+from .base import Base, TimestampMixin
 
 
-class Recipe(Base):
-    __tablename__ = "recipes"
+if TYPE_CHECKING:
+    from .users import User
+    from .recipe_ingredients import RecipeIngredient
+    from .recipe_nutrition import RecipeNutrition
+    from .recipe_instructions import RecipeInstruction
+    from .recipe_images import RecipeImage
+    from .recipe_categories import RecipeCategory
+    from .recipe_ratings import RecipeRating
+    from .routine_items import RoutineItem
+
+
+class Recipe(TimestampMixin, Base):
+    __tablename__ = "recipe"
 
     id: Mapped[int] = mapped_column(
-        BIGINT(unsigned=True),
+        BigInteger,
         primary_key=True,
         autoincrement=True,
     )
 
     user_id: Mapped[int] = mapped_column(
-        BIGINT(unsigned=True),
+        BigInteger,
         ForeignKey("users.id"),
         nullable=False,
     )
@@ -36,27 +52,27 @@ class Recipe(Base):
     )
 
     description: Mapped[str | None] = mapped_column(
-        TEXT,
+        Text,
         nullable=True,
     )
 
     preparation_time: Mapped[int | None] = mapped_column(
-        INTEGER(unsigned=True),
+        Integer,
         nullable=True,
     )
 
     cooking_time: Mapped[int | None] = mapped_column(
-        INTEGER(unsigned=True),
+        Integer,
         nullable=True,
     )
 
     total_time: Mapped[int | None] = mapped_column(
-        INTEGER(unsigned=True),
+        Integer,
         nullable=True,
     )
 
-    servings: Mapped[float] = mapped_column(
-        DECIMAL(8, 2),
+    servings: Mapped[Decimal] = mapped_column(
+        Numeric(8, 2),
         nullable=False,
     )
 
@@ -74,25 +90,53 @@ class Recipe(Base):
 
     deleted_at: Mapped[datetime | None] = mapped_column(
         TIMESTAMP,
-        nullable=True,
-    )
-
-    created_at: Mapped[datetime] = mapped_column(
-        TIMESTAMP,
-        nullable=False,
-        server_default=text("CURRENT_TIMESTAMP"),
-    )
-
-    updated_at: Mapped[datetime] = mapped_column(
-        TIMESTAMP,
-        nullable=False,
-        server_default=text("CURRENT_TIMESTAMP"),
-        server_onupdate=text("CURRENT_TIMESTAMP"),
+        nullable=True
     )
 
     user: Mapped["User"] = relationship(
         "User",
         back_populates="recipes",
+    )
+
+    ingredients: Mapped[list["RecipeIngredient"]] = relationship(
+        "RecipeIngredient",
+        back_populates="recipe",
+        cascade="all, delete-orphan",
+    )
+
+    nutrition: Mapped[list["RecipeNutrition"]] = relationship(
+        "RecipeNutrition",
+        back_populates="recipe",
+        cascade="all, delete-orphan",
+    )
+
+    instructions: Mapped[list["RecipeInstruction"]] = relationship(
+        "RecipeInstruction",
+        back_populates="recipe",
+        cascade="all, delete-orphan",
+    )
+
+    images: Mapped[list["RecipeImage"]] = relationship(
+        "RecipeImage",
+        back_populates="recipe",
+        cascade="all, delete-orphan",
+    )
+
+    categories: Mapped[list["RecipeCategory"]] = relationship(
+        "RecipeCategory",
+        back_populates="recipe",
+        cascade="all, delete-orphan",
+    )
+
+    ratings: Mapped[list["RecipeRating"]] = relationship(
+        "RecipeRating",
+        back_populates="recipe",
+        cascade="all, delete-orphan",
+    )
+
+    routine_items: Mapped[list["RoutineItem"]] = relationship(
+        "RoutineItem",
+        back_populates="recipe",
     )
 
     __table_args__ = (

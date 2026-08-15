@@ -5,13 +5,15 @@ from dotenv import load_dotenv
 from fastapi import FastAPI
 
 from cooking_compass.core.db import Base, engine
-from cooking_compass.models import recipe, users
+from cooking_compass import models
+
 
 load_dotenv(".env.dev")
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+
     print("Registered tables:", Base.metadata.tables.keys())
 
     async with engine.begin() as conn:
@@ -32,4 +34,6 @@ app = FastAPI(
 
 @app.get("/")
 async def home():
-    return f"Welcome to {os.getenv('APP_NAME', 'Cooking Compass')}"
+    return {
+        "message": f"Welcome to {os.getenv('APP_NAME', 'Cooking Compass')}"
+    }
