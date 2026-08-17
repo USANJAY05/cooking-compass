@@ -148,14 +148,14 @@ class CreateRecipeRequest(BaseModel):
         max_length=20,
     )
 
-    tag_ids: list[int] = Field(
+    tag_names: list[str] = Field(
         default_factory=list,
         max_length=50,
     )
 
-    @field_validator("category_ids", "tag_ids")
+    @field_validator("category_ids")
     @classmethod
-    def validate_ids(cls, value: list[int]) -> list[int]:
+    def validate_category_ids(cls, value: list[int]) -> list[int]:
         if any(item <= 0 for item in value):
             raise ValueError("IDs must be greater than 0")
 
@@ -163,6 +163,23 @@ class CreateRecipeRequest(BaseModel):
             raise ValueError("Duplicate IDs are not allowed")
 
         return value
+
+    @field_validator("tag_names")
+    @classmethod
+    def validate_tag_names(cls, value: list[str]) -> list[str]:
+        cleaned = [name.strip() for name in value]
+
+        if any(not name for name in cleaned):
+            raise ValueError("Tag names must not be empty")
+
+        if any(len(name) > 50 for name in cleaned):
+            raise ValueError("Tag names must be 50 characters or fewer")
+
+        lowered = [name.lower() for name in cleaned]
+        if len(lowered) != len(set(lowered)):
+            raise ValueError("Duplicate tag names are not allowed")
+
+        return cleaned
 
 
 # ---------------------------------------------------------

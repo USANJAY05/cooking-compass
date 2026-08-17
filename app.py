@@ -30,6 +30,10 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Cooking Compass",
     lifespan=lifespan,
+    swagger_ui_init_oauth={
+        "clientId": "your-culinary-app-client-id",
+        "usePkceWithAuthorizationCodeGrant": True,
+    },
 )
 
 app.include_router(router)

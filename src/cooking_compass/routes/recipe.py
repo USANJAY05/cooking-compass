@@ -2,7 +2,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, Query, status
 
-from cooking_compass.auth.keycloak import get_current_user
+from cooking_compass.utils.ensure_user import ensure_user_exists
 
 from cooking_compass.schema.recipe.request_schema import (
     CreateOrUpdateRatingRequest,
@@ -48,7 +48,7 @@ def get_recipes(
     limit: int = Query(default=20, ge=1, le=100),
     sort_by: str = Query(default="created_at"),
     sort_order: str = Query(default="desc"),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(ensure_user_exists),
 ):
     return "get recipes"
 
@@ -73,7 +73,7 @@ def search_recipes(
     limit: int = Query(default=20, ge=1, le=100),
     sort_by: str = Query(default="created_at"),
     sort_order: str = Query(default="desc"),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(ensure_user_exists),
 ):
     return "search recipes"
 
@@ -88,7 +88,7 @@ def search_recipes(
 )
 def get_recipe(
     recipe_id: int,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(ensure_user_exists),
 ):
     return "get recipe"
 
@@ -103,12 +103,12 @@ def get_recipe(
     status_code=status.HTTP_201_CREATED,
 )
 @user_exist
-def create_recipe(
+async def create_recipe(
     request: CreateRecipeRequest,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(ensure_user_exists),
 ):
     
-    return create_recipe_service(request, current_user)
+    return await create_recipe_service(request, current_user)
 
 
 # ---------------------------------------------------------
@@ -122,7 +122,7 @@ def create_recipe(
 def update_recipe(
     recipe_id: int,
     request: UpdateRecipeRequest,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(ensure_user_exists),
 ):
     return "update recipe"
 
@@ -137,7 +137,7 @@ def update_recipe(
 )
 def delete_recipe(
     recipe_id: int,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(ensure_user_exists),
 ):
     return None
 
@@ -153,7 +153,7 @@ def delete_recipe(
 def create_or_update_rating(
     recipe_id: int,
     request: CreateOrUpdateRatingRequest,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(ensure_user_exists),
 ):
     return "create or update rating"
 
@@ -168,6 +168,6 @@ def create_or_update_rating(
 )
 def delete_rating(
     recipe_id: int,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(ensure_user_exists),
 ):
     return None

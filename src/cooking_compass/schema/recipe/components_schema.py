@@ -5,11 +5,9 @@ class IngredientComponent(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     ingredient_id: int = Field(gt=0)
-    name: str = Field(min_length=1, max_length=150)
     quantity: float = Field(gt=0)
     unit: str = Field(min_length=1, max_length=50)
     display_order: int = Field(default=1, ge=1)
-
 
 class InstructionComponent(BaseModel):
     model_config = ConfigDict(from_attributes=True)
