@@ -18,6 +18,9 @@ from .instruction_images import InstructionImage
 from .categories import Category
 from .recipe_categories import RecipeCategory
 
+from .tags import Tag
+from .recipe_tags import RecipeTag
+
 from .recipe_ratings import RecipeRating
 
 from .routines import Routine

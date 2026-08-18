@@ -1,13 +1,11 @@
 from fastapi import Depends, HTTPException, status
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi.security import OAuth2AuthorizationCodeBearer, HTTPBearer, HTTPAuthorizationCredentials
 from jose import jwt, JWTError
 import httpx
 from dotenv import load_dotenv
 import os
 
 load_dotenv()
-
-security = HTTPBearer()
 
 KEYCLOAK_URL = os.getenv("KEYCLOAK_URL")
 REALM = os.getenv("REALM_NAME")
@@ -16,11 +14,26 @@ EXPECTED_AUDIENCE = os.getenv("EXPECTED_AUDIENCE")
 ISSUER = f"{KEYCLOAK_URL}/realms/{REALM}"
 JWKS_URL = f"{ISSUER}/protocol/openid-connect/certs"
 
+oauth2_scheme = OAuth2AuthorizationCodeBearer(
+    authorizationUrl=f"{ISSUER}/protocol/openid-connect/auth",
+    tokenUrl=f"{ISSUER}/protocol/openid-connect/token",
+    auto_error=False,
+)
+bearer_scheme = HTTPBearer(auto_error=False)
+
 
 async def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(security),
+    oauth2_token: str = Depends(oauth2_scheme),
+    bearer_creds: HTTPAuthorizationCredentials = Depends(bearer_scheme),
 ):
-    token = credentials.credentials
+    token = oauth2_token or (bearer_creds.credentials if bearer_creds else None)
+
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
 
     # Get Keycloak public keys
     async with httpx.AsyncClient() as client:
@@ -35,17 +48,14 @@ async def get_current_user(
     jwks = response.json()
 
     try:
-        # Read the token header
         unverified_header = jwt.get_unverified_header(token)
         kid = unverified_header.get("kid")
 
-        # Find the matching Keycloak public key
         key = next(
             key for key in jwks["keys"]
             if key["kid"] == kid
         )
 
-        # Verify signature + expiry + issuer + audience
         payload = jwt.decode(
             token,
             key,

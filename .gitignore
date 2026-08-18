@@ -11,3 +11,4 @@ wheels/
 .env
 .env.host
 .env.dev
+ca.pem

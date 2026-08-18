@@ -29,6 +29,7 @@ if TYPE_CHECKING:
     from .recipe_categories import RecipeCategory
     from .recipe_ratings import RecipeRating
     from .routine_items import RoutineItem
+    from .recipe_tags import RecipeTag
 
 
 class Recipe(TimestampMixin, Base):
@@ -114,6 +115,7 @@ class Recipe(TimestampMixin, Base):
         "RecipeInstruction",
         back_populates="recipe",
         cascade="all, delete-orphan",
+        foreign_keys="[RecipeInstruction.recipe_id]",
     )
 
     images: Mapped[list["RecipeImage"]] = relationship(
@@ -124,6 +126,12 @@ class Recipe(TimestampMixin, Base):
 
     categories: Mapped[list["RecipeCategory"]] = relationship(
         "RecipeCategory",
+        back_populates="recipe",
+        cascade="all, delete-orphan",
+    )
+
+    tags: Mapped[list["RecipeTag"]] = relationship(
+        "RecipeTag",
         back_populates="recipe",
         cascade="all, delete-orphan",
     )
