@@ -228,3 +228,6 @@ async def get_recipes_service(
             "limit": limit,
             "total": total,
         }
+
+def get_recipes_service():
+    pass

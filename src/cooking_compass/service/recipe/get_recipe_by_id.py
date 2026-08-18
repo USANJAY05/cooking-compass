@@ -97,7 +97,6 @@ async def get_recipe_by_id_service(
         )
 
         if not is_owner:
-            print("hiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiii")
 
             if (
                 recipe.visibility != "PUBLIC"
@@ -265,3 +264,5 @@ async def get_recipe_by_id_service(
 
             "rating": rating,
         }
+def get_recipe_by_id_service():
+    pass

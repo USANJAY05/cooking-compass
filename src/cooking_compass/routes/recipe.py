@@ -30,6 +30,7 @@ from cooking_compass.service.recipe.get_recipes import (
 from cooking_compass.service.recipe.get_recipe_by_id import (
     get_recipe_by_id_service,
 )
+from src.cooking_compass.service.recipe.create_recipe import create_recipe_service
 
 
 router = APIRouter(
