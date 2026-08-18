@@ -18,7 +18,7 @@ from cooking_compass.schema.recipe.response_schema import (
     RecipeSearchResponse,
 )
 
-from cooking_compass.service.recipe.create_recipe import create_recipe_service
+from src.cooking_compass.service.recipe.create_recipe import create_recipe_service
 
 from cooking_compass.utils.check_user_exist import user_exist
 
