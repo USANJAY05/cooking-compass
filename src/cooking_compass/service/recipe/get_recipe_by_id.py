@@ -3,7 +3,8 @@ from sqlalchemy.orm import selectinload
 from fastapi import HTTPException
 
 from cooking_compass.core.db import SessionLocal
-
+from cooking_compass.models.recipe_instructions import RecipeInstruction
+from cooking_compass.models.instruction_images import InstructionImage
 from cooking_compass.models.recipe import Recipe
 from cooking_compass.models.recipe_images import RecipeImage
 from cooking_compass.models.recipe_ratings import RecipeRating
@@ -34,9 +35,13 @@ async def get_recipe_by_id_service(
                     RecipeIngredient.ingredient
                 ),
 
-                # Instructions
+                # Instructions (with their images)
                 selectinload(
                     Recipe.instructions
+                ).selectinload(
+                    RecipeInstruction.images
+                ).selectinload(
+                    InstructionImage.image
                 ),
 
                 # Categories
@@ -128,20 +133,40 @@ async def get_recipe_by_id_service(
         # --------------------------------------------------
         # Instructions
         # --------------------------------------------------
-        instructions = [
-            {
-                "step_number": item.step_number,
-                "instruction_text": item.instruction_text,
-                "timer_seconds": item.timer_seconds,
-                "tip": item.tip,
-                "reference_recipe_id": item.reference_recipe_id,
-            }
-            for item in sorted(
-                recipe.instructions,
-                key=lambda x: x.step_number,
-            )
-        ]
+        instructions = []
 
+        for item in sorted(recipe.instructions, key=lambda x: x.step_number):
+
+            reference_image = None
+
+            sorted_images = sorted(
+                item.images,
+                key=lambda img: img.display_order,
+            )
+
+            for instruction_image in sorted_images:
+
+                if instruction_image.image is None:
+                    continue
+
+                storage_key = instruction_image.image.storage_key
+
+                if storage_key.startswith(("http://", "https://")):
+                    reference_image = storage_key
+
+                break
+
+            instructions.append(
+                {
+                    "step_number": item.step_number,
+                    "instruction_text": item.instruction_text,
+                    "timer_seconds": item.timer_seconds,
+                    "tip": item.tip,
+                    "reference_recipe_id": item.reference_recipe_id,
+                    "reference_image": reference_image,
+                }
+            )
+            
         # --------------------------------------------------
         # Categories
         # --------------------------------------------------
@@ -264,5 +289,4 @@ async def get_recipe_by_id_service(
 
             "rating": rating,
         }
-def get_recipe_by_id_service():
-    pass
+

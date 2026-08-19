@@ -22,6 +22,25 @@ class RecipeBaseResponse(BaseModel):
     visibility: str
 
 
+# class RecipeDetailResponse(RecipeBaseResponse):
+#     image_urls: list[HttpUrl] = Field(default_factory=list)
+
+#     ingredients: list[IngredientComponent] = Field(
+#         default_factory=list
+#     )
+
+#     instructions: list[InstructionComponent] = Field(
+#         default_factory=list
+#     )
+
+#     category_ids: list[int] = Field(
+#         default_factory=list
+#     )
+
+#     tag_ids: list[int] = Field(
+#         default_factory=list
+#     )
+
 class RecipeDetailResponse(RecipeBaseResponse):
     image_urls: list[HttpUrl] = Field(default_factory=list)
 
@@ -41,6 +60,11 @@ class RecipeDetailResponse(RecipeBaseResponse):
         default_factory=list
     )
 
+    nutrition: NutritionComponent | None = None
+
+    rating: RatingComponent | None = None
+
+    
 class RecipeListResponse(BaseModel):
     items: list[RecipeSummaryComponent]
 

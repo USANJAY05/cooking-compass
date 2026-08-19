@@ -18,7 +18,7 @@ class InstructionComponent(BaseModel):
     timer_seconds: int | None = Field(default=None, ge=0)
     tip: str | None = Field(default=None, max_length=1000)
     reference_recipe_id: int | None = Field(default=None, gt=0)
-
+    reference_image: str | None = Field(default=None)
 
 class NutritionItemComponent(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -51,3 +51,4 @@ class RecipeSummaryComponent(BaseModel):
     preparation_time: int | None = Field(default=None, ge=0)
     cooking_time: int | None = Field(default=None, ge=0)
     servings: int = Field(ge=1)
+    rating: RatingComponent
