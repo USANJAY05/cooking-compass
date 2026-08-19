@@ -1,4 +1,5 @@
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 
 from cooking_compass.core.db import SessionLocal
 from cooking_compass.models.recipe import Recipe
@@ -9,12 +10,29 @@ from cooking_compass.models.recipe_tags import RecipeTag
 from cooking_compass.models.tags import Tag
 
 
-async def _get_or_create_tag_ids(session, tag_names: list[str]) -> list[int]:
-    # normalize: strip whitespace, lowercase, dedupe while preserving order
+async def _get_or_create_tag_ids(
+    session,
+    tag_names: list[str],
+) -> list[int]:
+    """
+    Get existing tag IDs and create missing tags.
+
+    Tag names are:
+    - stripped
+    - converted to lowercase
+    - deduplicated while preserving order
+
+    Uses a nested transaction/savepoint when creating a tag so that
+    a unique-constraint race does not roll back the main recipe transaction.
+    """
+
+    # Normalize, clean, and deduplicate tag names
     seen = set()
     normalized = []
+
     for name in tag_names:
         clean = name.strip().lower()
+
         if clean and clean not in seen:
             seen.add(clean)
             normalized.append(clean)
@@ -22,77 +40,195 @@ async def _get_or_create_tag_ids(session, tag_names: list[str]) -> list[int]:
     if not normalized:
         return []
 
-    result = await session.execute(select(Tag).where(Tag.name.in_(normalized)))
-    existing = {tag.name: tag.id for tag in result.scalars().all()}
+    # Fetch existing tags in one query
+    result = await session.execute(
+        select(Tag).where(Tag.name.in_(normalized))
+    )
 
-    missing = [name for name in normalized if name not in existing]
+    existing = {
+        tag.name: tag.id
+        for tag in result.scalars().all()
+    }
 
+    # Determine which tags don't exist yet
+    missing = [
+        name
+        for name in normalized
+        if name not in existing
+    ]
+
+    # Create missing tags
     for name in missing:
-        tag = Tag(name=name)
-        session.add(tag)
         try:
-            await session.flush()  # assigns tag.id, catches unique-constraint races
+            # Savepoint:
+            # If this INSERT fails, only this nested transaction is rolled back.
+            async with session.begin_nested():
+                tag = Tag(name=name)
+                session.add(tag)
+
+                # Flush so the database generates tag.id
+                await session.flush()
+
+            # Nested transaction succeeded
+            existing[name] = tag.id
+
         except IntegrityError:
-            await session.rollback()
-            # someone else created it concurrently — fetch it
-            result = await session.execute(select(Tag).where(Tag.name == name))
+            # Another request may have created this tag concurrently.
+            # The savepoint was rolled back, but the main transaction remains intact.
+
+            result = await session.execute(
+                select(Tag).where(Tag.name == name)
+            )
+
             tag = result.scalars().first()
-        existing[name] = tag.id
 
-    return [existing[name] for name in normalized]
+            if tag is None:
+                # Something unexpected happened.
+                raise
+
+            existing[name] = tag.id
+
+    # Return IDs in the same order as the normalized tag names
+    return [
+        existing[name]
+        for name in normalized
+    ]
 
 
-async def create_recipe_service(request, current_user: dict):
+async def create_recipe_service(
+    request,
+    current_user: dict,
+):
+    """
+    Create a recipe and all related records.
+
+    Creates:
+    - Recipe
+    - RecipeCategory
+    - RecipeIngredient
+    - RecipeInstruction
+    - Tag
+    - RecipeTag
+
+    Everything is committed as one transaction.
+    """
+
+    # Remove nested/relationship data from Recipe model data
     recipe_data = request.model_dump(
-        exclude={"ingredients", "instructions", "category_ids", "tag_names", "image_urls"}
+        exclude={
+            "ingredients",
+            "instructions",
+            "category_ids",
+            "tag_names",
+            "image_urls",
+        }
     )
 
     async with SessionLocal() as session:
         try:
-            recipe = Recipe(**recipe_data, user_id=current_user["id"])
+            # ---------------------------------------------------------
+            # 1. Create recipe
+            # ---------------------------------------------------------
+
+            recipe = Recipe(
+                **recipe_data,
+                user_id=current_user["id"],
+            )
+
             session.add(recipe)
-            await session.flush()  # populates recipe.id
 
-            session.add_all(
-                RecipeCategory(recipe_id=recipe.id, category_id=cat_id)
-                for cat_id in request.category_ids
-            )
+            # Flush so recipe.id becomes available
+            await session.flush()
 
-            session.add_all(
-                RecipeIngredient(
-                    recipe_id=recipe.id,
-                    ingredient_id=ing.ingredient_id,
-                    quantity=ing.quantity,
-                    unit=ing.unit,
-                    display_order=ing.display_order,
+            # ---------------------------------------------------------
+            # 2. Create recipe categories
+            # ---------------------------------------------------------
+
+            if request.category_ids:
+                session.add_all(
+                    RecipeCategory(
+                        recipe_id=recipe.id,
+                        category_id=category_id,
+                    )
+                    for category_id in request.category_ids
                 )
-                for ing in request.ingredients
-            )
 
-            session.add_all(
-                RecipeInstruction(
-                    recipe_id=recipe.id,
-                    step_number=step.step_number,
-                    instruction_text=step.instruction_text,
-                    timer_seconds=step.timer_seconds,
-                    tip=step.tip,
-                    reference_recipe_id=step.reference_recipe_id,
+            # ---------------------------------------------------------
+            # 3. Create recipe ingredients
+            # ---------------------------------------------------------
+
+            if request.ingredients:
+                session.add_all(
+                    RecipeIngredient(
+                        recipe_id=recipe.id,
+                        ingredient_id=ingredient.ingredient_id,
+                        quantity=ingredient.quantity,
+                        unit=ingredient.unit,
+                        display_order=ingredient.display_order,
+                    )
+                    for ingredient in request.ingredients
                 )
-                for step in request.instructions
+
+            # ---------------------------------------------------------
+            # 4. Create recipe instructions
+            # ---------------------------------------------------------
+
+            if request.instructions:
+                session.add_all(
+                    RecipeInstruction(
+                        recipe_id=recipe.id,
+                        step_number=step.step_number,
+                        instruction_text=step.instruction_text,
+                        timer_seconds=step.timer_seconds,
+                        tip=step.tip,
+                        reference_recipe_id=step.reference_recipe_id,
+                    )
+                    for step in request.instructions
+                )
+
+            # ---------------------------------------------------------
+            # 5. Get/create tags
+            # ---------------------------------------------------------
+
+            tag_ids = await _get_or_create_tag_ids(
+                session,
+                request.tag_names,
             )
 
-            tag_ids = await _get_or_create_tag_ids(session, request.tag_names)
-            session.add_all(
-                RecipeTag(recipe_id=recipe.id, tag_id=tag_id)
-                for tag_id in tag_ids
-            )
+            # ---------------------------------------------------------
+            # 6. Create recipe-tag relationships
+            # ---------------------------------------------------------
 
-            # image_urls — still excluded, no upload flow wired yet
+            if tag_ids:
+                session.add_all(
+                    RecipeTag(
+                        recipe_id=recipe.id,
+                        tag_id=tag_id,
+                    )
+                    for tag_id in tag_ids
+                )
+
+            # ---------------------------------------------------------
+            # 7. Image URLs
+            # ---------------------------------------------------------
+            #
+            # image_urls is currently excluded from recipe_data.
+            # Add image upload/storage logic here later.
+            #
+
+            # ---------------------------------------------------------
+            # 8. Commit everything
+            # ---------------------------------------------------------
 
             await session.commit()
+
+            # Refresh recipe with database-generated values
             await session.refresh(recipe)
+
             return recipe
 
         except Exception:
+            # Roll back the entire recipe transaction if anything
+            # outside the tag savepoints fails.
             await session.rollback()
             raise

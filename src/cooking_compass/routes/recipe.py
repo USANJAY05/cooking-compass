@@ -1,6 +1,6 @@
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, Query, status, HTTPException
 
 from cooking_compass.utils.ensure_user import ensure_user_exists
 
@@ -19,9 +19,16 @@ from cooking_compass.schema.recipe.response_schema import (
 )
 
 from src.cooking_compass.service.recipe.create_recipe import create_recipe_service
-
+from cooking_compass.service.recipe.search_recipes import search_recipes_service
 from cooking_compass.utils.check_user_exist import user_exist
-
+from cooking_compass.service.recipe.delete_recipe import delete_recipe_service
+from cooking_compass.service.recipe.update_recipe import update_recipe_service
+from cooking_compass.service.recipe.ratings.ratings_recipe import (
+    create_or_update_rating_service,
+)
+from cooking_compass.service.recipe.ratings.delete_rating import (
+    delete_rating_service,
+)
 router = APIRouter(
     prefix="/recipes",
     tags=["RECIPES"],
@@ -61,7 +68,8 @@ def get_recipes(
     "/search",
     response_model=RecipeSearchResponse,
 )
-def search_recipes(
+@user_exist
+async def search_recipes(
     q: str = Query(..., min_length=1),
     scope: str = Query(
         default="public",
@@ -75,7 +83,17 @@ def search_recipes(
     sort_order: str = Query(default="desc"),
     current_user: dict = Depends(ensure_user_exists),
 ):
-    return "search recipes"
+    return await search_recipes_service(
+        current_user=current_user,
+        q=q,
+        scope=scope,
+        category_id=category_id,
+        tag_id=tag_id,
+        page=page,
+        limit=limit,
+        sort_by=sort_by,
+        sort_order=sort_order,
+    )
 
 
 # ---------------------------------------------------------
@@ -107,7 +125,6 @@ async def create_recipe(
     request: CreateRecipeRequest,
     current_user: dict = Depends(ensure_user_exists),
 ):
-    
     return await create_recipe_service(request, current_user)
 
 
@@ -119,12 +136,13 @@ async def create_recipe(
     "/{recipe_id}",
     response_model=RecipeDetailResponse,
 )
-def update_recipe(
+@user_exist
+async def update_recipe(
     recipe_id: int,
     request: UpdateRecipeRequest,
     current_user: dict = Depends(ensure_user_exists),
 ):
-    return "update recipe"
+    return await update_recipe_service(recipe_id, request, current_user)
 
 
 # ---------------------------------------------------------
@@ -135,10 +153,20 @@ def update_recipe(
     "/{recipe_id}",
     status_code=status.HTTP_204_NO_CONTENT,
 )
-def delete_recipe(
+@user_exist
+async def delete_recipe(
     recipe_id: int,
     current_user: dict = Depends(ensure_user_exists),
 ):
+    deleted = await delete_recipe_service(
+        recipe_id=recipe_id,
+        current_user=current_user,
+    )
+    if not deleted:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Recipe not found",
+        )
     return None
 
 
@@ -150,13 +178,13 @@ def delete_recipe(
     "/{recipe_id}/rating",
     response_model=RatingResponse,
 )
-def create_or_update_rating(
+@user_exist
+async def create_or_update_rating(
     recipe_id: int,
     request: CreateOrUpdateRatingRequest,
     current_user: dict = Depends(ensure_user_exists),
 ):
-    return "create or update rating"
-
+    return await create_or_update_rating_service(recipe_id, request, current_user)
 
 # ---------------------------------------------------------
 # DELETE /recipes/{recipe_id}/rating
@@ -166,8 +194,18 @@ def create_or_update_rating(
     "/{recipe_id}/rating",
     status_code=status.HTTP_204_NO_CONTENT,
 )
-def delete_rating(
+@user_exist
+async def delete_rating(
     recipe_id: int,
     current_user: dict = Depends(ensure_user_exists),
 ):
+    deleted = await delete_rating_service(
+        recipe_id=recipe_id,
+        current_user=current_user,
+    )
+    if not deleted:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Rating not found",
+        )
     return None
