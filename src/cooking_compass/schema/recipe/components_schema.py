@@ -9,6 +9,7 @@ class IngredientComponent(BaseModel):
     unit: str = Field(min_length=1, max_length=50)
     display_order: int = Field(default=1, ge=1)
 
+
 class InstructionComponent(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

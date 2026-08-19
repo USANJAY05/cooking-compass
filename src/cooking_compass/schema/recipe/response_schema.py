@@ -41,11 +41,6 @@ class RecipeDetailResponse(RecipeBaseResponse):
         default_factory=list
     )
 
-    nutrition: NutritionComponent | None = None
-
-    rating: RatingComponent
-
-
 class RecipeListResponse(BaseModel):
     items: list[RecipeSummaryComponent]
 
