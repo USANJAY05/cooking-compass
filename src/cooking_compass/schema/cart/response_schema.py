@@ -1,35 +1,18 @@
-from datetime import date
+from decimal import Decimal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict
 
-from .components_schema import CartItemComponent
+
+class CartItemResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    ingredient_id: int
+    name: str | None = None
+    quantity: Decimal
+    unit: str
 
 
 class CartResponse(BaseModel):
-    from_date: date | None
+    model_config = ConfigDict(from_attributes=True)
 
-    to_date: date | None
-
-    items: list[CartItemComponent] = Field(
-        default_factory=list
-    )
-
-    total_items: int
-
-    checked_items: int
-
-
-class GenerateCartResponse(BaseModel):
-    from_date: date
-
-    to_date: date
-
-    items: list[CartItemComponent] = Field(
-        default_factory=list
-    )
-
-    total_items: int
-
-
-class UpdateCartItemResponse(BaseModel):
-    item: CartItemComponent
+    items: list[CartItemResponse]

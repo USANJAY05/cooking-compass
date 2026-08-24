@@ -1,15 +1,20 @@
-from sqlalchemy import select, func
-from sqlalchemy.orm import selectinload
+from collections import defaultdict
+
 from fastapi import HTTPException
+from sqlalchemy import func, select
+from sqlalchemy.orm import selectinload
 
 from cooking_compass.core.db import SessionLocal
+
+from cooking_compass.models.recipe import Recipe
+from cooking_compass.models.recipe_ingredients import RecipeIngredient
+from cooking_compass.models.ingredients import Ingredient
+from cooking_compass.models.ingredient_nutrients import IngredientNutrient
+
 from cooking_compass.models.recipe_instructions import RecipeInstruction
 from cooking_compass.models.instruction_images import InstructionImage
-from cooking_compass.models.recipe import Recipe
 from cooking_compass.models.recipe_images import RecipeImage
 from cooking_compass.models.recipe_ratings import RecipeRating
-from cooking_compass.models.recipe_nutrition import RecipeNutrition
-from cooking_compass.models.recipe_ingredients import RecipeIngredient
 
 
 async def get_recipe_by_id_service(
@@ -18,9 +23,10 @@ async def get_recipe_by_id_service(
 ):
     async with SessionLocal() as session:
 
-        # --------------------------------------------------
-        # Get recipe
-        # --------------------------------------------------
+        # =========================================================
+        # 1. Get recipe
+        # =========================================================
+
         query = (
             select(Recipe)
             .where(
@@ -28,47 +34,78 @@ async def get_recipe_by_id_service(
                 Recipe.deleted_at.is_(None),
             )
             .options(
+
+                # -------------------------------------------------
                 # Ingredients
+                #
+                # Recipe
+                #   -> RecipeIngredient
+                #       -> Ingredient
+                #           -> IngredientNutrient
+                #               -> Nutrient
+                # -------------------------------------------------
+
                 selectinload(
                     Recipe.ingredients
-                ).selectinload(
+                )
+                .selectinload(
                     RecipeIngredient.ingredient
+                )
+                .selectinload(
+                    Ingredient.nutrients
+                )
+                .selectinload(
+                    IngredientNutrient.nutrient
                 ),
 
-                # Instructions (with their images)
+                # -------------------------------------------------
+                # Instructions
+                #   -> Images
+                #       -> Image
+                # -------------------------------------------------
+
                 selectinload(
                     Recipe.instructions
-                ).selectinload(
+                )
+                .selectinload(
                     RecipeInstruction.images
-                ).selectinload(
+                )
+                .selectinload(
                     InstructionImage.image
                 ),
 
+                # -------------------------------------------------
                 # Categories
+                # -------------------------------------------------
+
                 selectinload(
                     Recipe.categories
                 ),
 
+                # -------------------------------------------------
                 # Tags
+                # -------------------------------------------------
+
                 selectinload(
                     Recipe.tags
                 ),
 
-                # Images
+                # -------------------------------------------------
+                # Recipe Images
+                #   -> Image
+                # -------------------------------------------------
+
                 selectinload(
                     Recipe.images
-                ).selectinload(
+                )
+                .selectinload(
                     RecipeImage.image
                 ),
 
-                # Nutrition
-                selectinload(
-                    Recipe.nutrition
-                ).selectinload(
-                    RecipeNutrition.nutrient
-                ),
-
+                # -------------------------------------------------
                 # Ratings
+                # -------------------------------------------------
+
                 selectinload(
                     Recipe.ratings
                 ),
@@ -79,9 +116,10 @@ async def get_recipe_by_id_service(
 
         recipe = result.scalar_one_or_none()
 
-        # --------------------------------------------------
-        # Recipe not found
-        # --------------------------------------------------
+        # =========================================================
+        # 2. Recipe not found
+        # =========================================================
+
         if recipe is None:
             raise HTTPException(
                 status_code=404,
@@ -91,57 +129,65 @@ async def get_recipe_by_id_service(
                 },
             )
 
-        # --------------------------------------------------
-        # Check access
-        # --------------------------------------------------
-        print(current_user)
-        is_owner = (
-            recipe.user_id == current_user.get("id")
-            
+        # =========================================================
+        # 3. Check access
+        # =========================================================
 
-        )
+        user_id = current_user.get("id")
 
-        if not is_owner:
+        is_owner = recipe.user_id == user_id
 
-            if (
-                recipe.visibility != "PUBLIC"
-            ):
-                raise HTTPException(
-                    status_code=404,
-                    detail={
-                        "success": False,
-                        "message": "Recipe not found",
-                    },
-                )
-
-        # --------------------------------------------------
-        # Ingredients
-        # --------------------------------------------------
-        ingredients = [
-            {
-                "ingredient_id": item.ingredient_id,
-                "quantity": item.quantity,
-                "unit": item.unit,
-                "display_order": item.display_order,
-            }
-            for item in sorted(
-                recipe.ingredients,
-                key=lambda x: x.display_order,
+        if not is_owner and recipe.visibility != "PUBLIC":
+            raise HTTPException(
+                status_code=404,
+                detail={
+                    "success": False,
+                    "message": "Recipe not found",
+                },
             )
-        ]
 
-        # --------------------------------------------------
-        # Instructions
-        # --------------------------------------------------
+        # =========================================================
+        # 4. Ingredients
+        # =========================================================
+
+        ingredients = []
+
+        for item in sorted(
+            recipe.ingredients,
+            key=lambda x: x.display_order,
+        ):
+
+            ingredient_name = None
+
+            if item.ingredient is not None:
+                ingredient_name = item.ingredient.name
+
+            ingredients.append(
+                {
+                    "ingredient_id": item.ingredient_id,
+                    "name": ingredient_name,
+                    "quantity": float(item.quantity),
+                    "unit": item.unit,
+                    "display_order": item.display_order,
+                }
+            )
+
+        # =========================================================
+        # 5. Instructions
+        # =========================================================
+
         instructions = []
 
-        for item in sorted(recipe.instructions, key=lambda x: x.step_number):
+        for item in sorted(
+            recipe.instructions,
+            key=lambda x: x.step_number,
+        ):
 
             reference_image = None
 
             sorted_images = sorted(
                 item.images,
-                key=lambda img: img.display_order,
+                key=lambda x: x.display_order,
             )
 
             for instruction_image in sorted_images:
@@ -149,12 +195,15 @@ async def get_recipe_by_id_service(
                 if instruction_image.image is None:
                     continue
 
-                storage_key = instruction_image.image.storage_key
+                storage_key = (
+                    instruction_image.image.storage_key
+                )
 
-                if storage_key.startswith(("http://", "https://")):
+                if storage_key.startswith(
+                    ("http://", "https://")
+                ):
                     reference_image = storage_key
-
-                break
+                    break
 
             instructions.append(
                 {
@@ -162,30 +211,35 @@ async def get_recipe_by_id_service(
                     "instruction_text": item.instruction_text,
                     "timer_seconds": item.timer_seconds,
                     "tip": item.tip,
-                    "reference_recipe_id": item.reference_recipe_id,
+                    "reference_recipe_id": (
+                        item.reference_recipe_id
+                    ),
                     "reference_image": reference_image,
                 }
             )
-            
-        # --------------------------------------------------
-        # Categories
-        # --------------------------------------------------
+
+        # =========================================================
+        # 6. Categories
+        # =========================================================
+
         category_ids = [
             item.category_id
             for item in recipe.categories
         ]
 
-        # --------------------------------------------------
-        # Tags
-        # --------------------------------------------------
+        # =========================================================
+        # 7. Tags
+        # =========================================================
+
         tag_ids = [
             item.tag_id
             for item in recipe.tags
         ]
 
-        # --------------------------------------------------
-        # Images
-        # --------------------------------------------------
+        # =========================================================
+        # 8. Recipe Images
+        # =========================================================
+
         image_urls = []
 
         for recipe_image in sorted(
@@ -205,38 +259,144 @@ async def get_recipe_by_id_service(
             ):
                 image_urls.append(storage_key)
 
-        # --------------------------------------------------
-        # Nutrition
-        # --------------------------------------------------
-        nutrition_items = []
+        # =========================================================
+        # 9. Nutrition
+        # =========================================================
 
-        for item in recipe.nutrition:
+        nutrition_totals = defaultdict(float)
+        nutrition_units = {}
+        nutrition_names = {}
 
-            if item.nutrient is None:
+        for recipe_ingredient in recipe.ingredients:
+
+            ingredient = recipe_ingredient.ingredient
+
+            if ingredient is None:
                 continue
 
-            nutrition_items.append(
-                {
-                    "code": item.nutrient.code,
-                    "amount": float(
-                        item.amount_per_serving
-                    ),
-                    "unit": item.nutrient.unit,
-                }
+            # -----------------------------------------------------
+            # IngredientNutrient.amount_per_100g is based on 100g.
+            #
+            # Therefore this calculation is directly valid when
+            # the recipe ingredient quantity is expressed in grams.
+            # -----------------------------------------------------
+
+            unit = (
+                recipe_ingredient.unit
+                .strip()
+                .lower()
             )
 
-        nutrition = None
+            if unit not in {
+                "g",
+                "gram",
+                "grams",
+            }:
+                continue
 
-        if nutrition_items:
+            ingredient_quantity = float(
+                recipe_ingredient.quantity
+            )
 
-            nutrition = {
-                "servings": int(recipe.servings),
-                "items": nutrition_items,
-            }
+            # -----------------------------------------------------
+            # Ingredient
+            #     -> nutrients
+            #         -> nutrient
+            # -----------------------------------------------------
 
-        # --------------------------------------------------
-        # Rating
-        # --------------------------------------------------
+            for ingredient_nutrient in ingredient.nutrients:
+
+                nutrient = (
+                    ingredient_nutrient.nutrient
+                )
+
+                if nutrient is None:
+                    continue
+
+                nutrient_code = nutrient.code
+
+                amount_per_100g = float(
+                    ingredient_nutrient.amount_per_100g
+                )
+
+                # -------------------------------------------------
+                # Calculate nutrition for this ingredient.
+                #
+                # Example:
+                #
+                # 200g ingredient
+                # 50 kcal / 100g
+                #
+                # 50 * 200 / 100 = 100 kcal
+                # -------------------------------------------------
+
+                calculated_amount = (
+                    amount_per_100g
+                    * ingredient_quantity
+                    / 100
+                )
+
+                nutrition_totals[
+                    nutrient_code
+                ] += calculated_amount
+
+                nutrition_units[
+                    nutrient_code
+                ] = nutrient.unit
+
+                nutrition_names[
+                    nutrient_code
+                ] = nutrient.name
+
+        # =========================================================
+        # 10. Convert total nutrition to per serving
+        # =========================================================
+
+        servings = int(recipe.servings)
+
+        nutrition_items = []
+
+        if servings > 0:
+
+            for (
+                nutrient_code,
+                total_amount,
+            ) in nutrition_totals.items():
+
+                amount_per_serving = (
+                    total_amount / servings
+                )
+
+                nutrition_items.append(
+                    {
+                        "code": nutrient_code,
+                        "name": nutrition_names[
+                            nutrient_code
+                        ],
+                        "amount": round(
+                            amount_per_serving,
+                            2,
+                        ),
+                        "unit": nutrition_units[
+                            nutrient_code
+                        ],
+                    }
+                )
+
+        # Consistent ordering
+        nutrition_items.sort(
+            key=lambda x: x["code"]
+        )
+
+        nutrition = {
+            "servings": servings,
+            "items": nutrition_items,
+        }
+
+        # =========================================================
+        # 11. Rating
+        # =========================================================
+
         rating_result = await session.execute(
             select(
                 func.coalesce(
@@ -248,7 +408,8 @@ async def get_recipe_by_id_service(
                 func.count(
                     RecipeRating.id
                 ),
-            ).where(
+            )
+            .where(
                 RecipeRating.recipe_id == recipe.id
             )
         )
@@ -259,20 +420,32 @@ async def get_recipe_by_id_service(
             "average": float(
                 average or 0
             ),
-            "count": count,
+            "count": int(count),
         }
 
-        # --------------------------------------------------
-        # Final response
-        # --------------------------------------------------
+        # =========================================================
+        # 12. Final response
+        # =========================================================
+
         return {
             "id": recipe.id,
             "name": recipe.name,
             "description": recipe.description,
-            "preparation_time": recipe.preparation_time,
-            "cooking_time": recipe.cooking_time,
-            "total_time": recipe.total_time,
-            "servings": int(recipe.servings),
+
+            "preparation_time": (
+                recipe.preparation_time
+            ),
+
+            "cooking_time": (
+                recipe.cooking_time
+            ),
+
+            "total_time": (
+                recipe.total_time
+            ),
+
+            "servings": servings,
+
             "visibility": recipe.visibility,
 
             "image_urls": image_urls,
@@ -289,4 +462,3 @@ async def get_recipe_by_id_service(
 
             "rating": rating,
         }
-

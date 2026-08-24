@@ -1,16 +1,18 @@
 from datetime import date
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from .components_schema import (
     RecurrenceComponent,
-    RoutineRecipeComponent,
+    RoutineItemComponent,
     RoutineSummaryComponent,
 )
 
 
 class RoutineDetailResponse(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(
+        from_attributes=True
+    )
 
     id: int
 
@@ -18,15 +20,44 @@ class RoutineDetailResponse(BaseModel):
 
     description: str | None
 
-    start_date: date
+    status: str
 
-    end_date: date | None
-
-    recipes: list[RoutineRecipeComponent] = Field(
+    recipes: list[RoutineItemComponent] = Field(
         default_factory=list
     )
 
     recurrence: RecurrenceComponent | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def build_response_dict(cls, obj):
+
+        if isinstance(obj, dict):
+            return obj
+
+        items = getattr(obj, "items", []) or []
+
+        recipes = []
+
+        for item in items:
+            recipe = getattr(item, "recipe", None)
+
+            recipes.append({
+                "recipe_id": item.recipe_id,
+                "recipe_name": recipe.name if recipe else "",
+                "recipe_thumbnail_url": None,
+                "quantity": item.quantity,
+                "quantity_unit": item.quantity_type,
+            })
+
+        return {
+            "id": obj.id,
+            "name": obj.name,
+            "description": obj.description,
+            "status": obj.status,
+            "recipes": recipes,
+            "recurrence": obj.recurrence,
+        }
 
 
 class RoutineListResponse(BaseModel):
@@ -39,7 +70,9 @@ class RoutineListResponse(BaseModel):
     total: int
 
 
-class RoutineSearchResponse(RoutineListResponse):
+class RoutineSearchResponse(
+    RoutineListResponse
+):
     query: str
 
 

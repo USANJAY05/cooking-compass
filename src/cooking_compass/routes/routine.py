@@ -1,6 +1,15 @@
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    Query,
+    status,
+)
+
+from sqlalchemy.orm import Session
 
 from cooking_compass.auth.keycloak import get_current_user
+from cooking_compass.core.db import get_db
+from cooking_compass.utils.check_user_exist import user_exist
 
 from cooking_compass.schema.routine.request_schema import (
     CreateRoutineRequest,
@@ -8,9 +17,28 @@ from cooking_compass.schema.routine.request_schema import (
 )
 
 from cooking_compass.schema.routine.response_schema import (
+    DeleteRoutineResponse,
     RoutineDetailResponse,
     RoutineListResponse,
     RoutineSearchResponse,
+)
+
+from cooking_compass.service.routine.get_routine import (
+    get_routines as get_routines_service,
+    search_routines as search_routines_service,
+    get_routine as get_routine_service,
+)
+
+from cooking_compass.service.routine.create_routine import (
+    create_routine as create_routine_service,
+)
+
+from cooking_compass.service.routine.update_routine import (
+    update_routine as update_routine_service,
+)
+
+from cooking_compass.service.routine.delete_routine import (
+    delete_routine as delete_routine_service,
 )
 
 
@@ -20,15 +48,20 @@ router = APIRouter(
 )
 
 
-# ---------------------------------------------------------
+def _user_id(current_user: dict) -> int:
+    return current_user["id"]
+
+
+# =========================================================
 # GET /routines
-# Get routines
-# ---------------------------------------------------------
+# =========================================================
+
 @router.get(
     "/",
     response_model=RoutineListResponse,
 )
-def get_routines(
+@user_exist
+async def get_routines(
     scope: str = Query(
         default="mine",
         description="Routine scope: mine or feed",
@@ -48,19 +81,36 @@ def get_routines(
     sort_order: str = Query(
         default="desc",
     ),
+    db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
-    return "get routines"
+    items, total = await get_routines_service(
+        db=db,
+        user_id=_user_id(current_user),
+        scope=scope,
+        page=page,
+        limit=limit,
+        sort_by=sort_by,
+        sort_order=sort_order,
+    )
+
+    return RoutineListResponse(
+        items=items,
+        page=page,
+        limit=limit,
+        total=total,
+    )
 
 
-# ---------------------------------------------------------
+# =========================================================
 # GET /routines/search
-# Search routines
-# ---------------------------------------------------------
+# =========================================================
+
 @router.get(
     "/search",
     response_model=RoutineSearchResponse,
 )
+@user_exist
 def search_routines(
     q: str = Query(
         ...,
@@ -69,7 +119,6 @@ def search_routines(
     ),
     scope: str = Query(
         default="mine",
-        description="Search scope: mine or feed",
     ),
     page: int = Query(
         default=1,
@@ -86,68 +135,115 @@ def search_routines(
     sort_order: str = Query(
         default="desc",
     ),
+    db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
-    return "search routines"
+    items, total = search_routines_service(
+        db=db,
+        user_id=_user_id(current_user),
+        q=q,
+        scope=scope,
+        page=page,
+        limit=limit,
+        sort_by=sort_by,
+        sort_order=sort_order,
+    )
+
+    return RoutineSearchResponse(
+        items=items,
+        page=page,
+        limit=limit,
+        total=total,
+        query=q,
+    )
 
 
-# ---------------------------------------------------------
+# =========================================================
 # GET /routines/{routine_id}
-# Get a specific routine
-# ---------------------------------------------------------
+# =========================================================
+
 @router.get(
     "/{routine_id}",
     response_model=RoutineDetailResponse,
 )
-def get_routine(
+@user_exist
+async def get_routine(
     routine_id: int,
+    db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
-    return "get routine"
+    return await get_routine_service(
+        db=db,
+        user_id=_user_id(current_user),
+        routine_id=routine_id,
+    )
 
 
-# ---------------------------------------------------------
+# =========================================================
 # POST /routines
-# Create routine
-# ---------------------------------------------------------
+# =========================================================
+
 @router.post(
     "/",
     response_model=RoutineDetailResponse,
     status_code=status.HTTP_201_CREATED,
 )
-def create_routine(
+@user_exist
+async def create_routine(
     request: CreateRoutineRequest,
+    db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
-    return "create routine"
+    return await create_routine_service(
+        db=db,
+        user_id=_user_id(current_user),
+        request=request,
+    )
 
 
-# ---------------------------------------------------------
+# =========================================================
 # PUT /routines/{routine_id}
-# Update routine
-# ---------------------------------------------------------
+# =========================================================
+
 @router.put(
     "/{routine_id}",
     response_model=RoutineDetailResponse,
 )
-def update_routine(
+@user_exist
+async def update_routine(
     routine_id: int,
     request: UpdateRoutineRequest,
+    db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
-    return "update routine"
+    return await update_routine_service(
+        db=db,
+        user_id=_user_id(current_user),
+        routine_id=routine_id,
+        request=request,
+    )
 
 
-# ---------------------------------------------------------
+# =========================================================
 # DELETE /routines/{routine_id}
-# Soft delete routine
-# ---------------------------------------------------------
+# =========================================================
+
 @router.delete(
     "/{routine_id}",
-    status_code=status.HTTP_204_NO_CONTENT,
+    response_model=DeleteRoutineResponse,
 )
-def delete_routine(
+@user_exist
+async def delete_routine(
     routine_id: int,
+    db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
-    return None
+    await delete_routine_service(
+        db=db,
+        user_id=_user_id(current_user),
+        routine_id=routine_id,
+    )
+
+    return DeleteRoutineResponse(
+        message="Routine deleted successfully",
+    )

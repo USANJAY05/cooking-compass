@@ -5,10 +5,10 @@ class IngredientComponent(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     ingredient_id: int = Field(gt=0)
+    name: str = Field(min_length=1, max_length=200)
     quantity: float = Field(gt=0)
     unit: str = Field(min_length=1, max_length=50)
     display_order: int = Field(default=1, ge=1)
-
 
 class InstructionComponent(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -24,9 +24,9 @@ class NutritionItemComponent(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     code: str = Field(min_length=1, max_length=50)
+    name: str = Field(min_length=1, max_length=100)
     amount: float = Field(ge=0)
-    unit: str = Field(min_length=1, max_length=20)
-
+    unit: str = Field(min_length=1, max_length=30)
 
 class NutritionComponent(BaseModel):
     model_config = ConfigDict(from_attributes=True)

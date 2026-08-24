@@ -1,36 +1,62 @@
-from datetime import date
+from datetime import date, datetime
+from decimal import Decimal
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
-class RoutineRecipeComponent(BaseModel):
+# =========================================================
+# ROUTINE ITEM
+# =========================================================
+
+class RoutineItemComponent(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     recipe_id: int = Field(gt=0)
+
     recipe_name: str = Field(
         min_length=1,
         max_length=255,
     )
+
     recipe_thumbnail_url: str | None = None
 
-    meal_type: Literal[
-        "BREAKFAST",
-        "LUNCH",
-        "DINNER",
-        "SNACK",
+    quantity: Decimal = Field(
+        gt=0,
+        max_digits=10,
+        decimal_places=2,
+    )
+
+    quantity_unit: Literal[
+        "SERVING",
+        "G",
+        "KG",
+        "ML",
+        "L",
     ]
 
-    day_of_week: int = Field(
-        ge=1,
-        le=7,
+class RoutineItemRequest(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    recipe_id: int = Field(gt=0)
+
+    quantity: Decimal = Field(
+        gt=0,
+        max_digits=10,
+        decimal_places=2,
     )
 
-    servings: int = Field(
-        ge=1,
-        le=1000,
-    )
+    quantity_unit: Literal[
+        "SERVING",
+        "G",
+        "KG",
+        "ML",
+        "L",
+    ]
 
+# =========================================================
+# RECURRENCE
+# =========================================================
 
 class RecurrenceComponent(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -38,6 +64,7 @@ class RecurrenceComponent(BaseModel):
     frequency: Literal[
         "DAILY",
         "WEEKLY",
+        "MONTHLY",
     ]
 
     interval: int = Field(
@@ -51,14 +78,39 @@ class RecurrenceComponent(BaseModel):
     )
 
     start_date: date
+
     end_date: date | None = None
 
+    occurrence_count: int | None = Field(
+        default=None,
+        ge=1,
+    )
+
+    @field_validator("days_of_week", mode="before")
+    @classmethod
+    def parse_days_of_week(cls, value):
+        if value is None:
+            return []
+        if isinstance(value, str):
+            if not value.strip():
+                return []
+            return [int(day) for day in value.split(",")]
+        return value
+
+
+# =========================================================
+# ROUTINE SUMMARY
+# =========================================================
 
 class RoutineSummaryComponent(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
+
     name: str
+
     description: str | None
-    start_date: date
-    end_date: date | None
+
+    created_at: datetime | None = None
+
+    updated_at: datetime | None = None

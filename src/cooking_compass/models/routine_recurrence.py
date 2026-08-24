@@ -18,7 +18,7 @@ from .base import Base, TimestampMixin
 
 
 if TYPE_CHECKING:
-    from .routine_items import RoutineItem
+    from .routines import Routine
 
 
 class RoutineRecurrence(TimestampMixin, Base):
@@ -30,9 +30,9 @@ class RoutineRecurrence(TimestampMixin, Base):
         autoincrement=True,
     )
 
-    routine_item_id: Mapped[int] = mapped_column(
+    routine_id: Mapped[int] = mapped_column(
         BigInteger,
-        ForeignKey("routine_items.id"),
+        ForeignKey("routines.id", ondelete="CASCADE"),
         nullable=False,
         unique=True,
     )
@@ -72,19 +72,23 @@ class RoutineRecurrence(TimestampMixin, Base):
         nullable=True,
     )
 
-    routine_item: Mapped["RoutineItem"] = relationship(
-        "RoutineItem",
+    routine: Mapped["Routine"] = relationship(
+        "Routine",
         back_populates="recurrence",
     )
 
     __table_args__ = (
         CheckConstraint(
             "interval_value > 0",
-            name="chk_recurrence_interval",
+            name="chk_routine_recurrence_interval",
+        ),
+        CheckConstraint(
+            "occurrence_count IS NULL OR occurrence_count > 0",
+            name="chk_routine_recurrence_occurrence",
         ),
         Index(
-            "idx_routine_recurrence_item",
-            "routine_item_id",
+            "idx_routine_recurrence_routine",
+            "routine_id",
         ),
         Index(
             "idx_routine_recurrence_dates",
