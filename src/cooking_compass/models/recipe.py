@@ -12,12 +12,13 @@ from sqlalchemy import (
     TIMESTAMP,
     ForeignKey,
     Index,
-    text
+    text,
 )
 
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .base import Base, TimestampMixin
+from cooking_compass.schema.recipe.components_schema import CookedWeightUnit
 
 
 if TYPE_CHECKING:
@@ -74,7 +75,7 @@ class Recipe(TimestampMixin, Base):
 
     servings: Mapped[Decimal] = mapped_column(
         Numeric(8, 2),
-        nullable=False,
+        nullable=True,
     )
 
     visibility: Mapped[str] = mapped_column(
@@ -89,9 +90,35 @@ class Recipe(TimestampMixin, Base):
         server_default=text("'DRAFT'"),
     )
 
+    # ---------------------------------------------------------
+    # Cooked weight (yield of the finished dish)
+    # ---------------------------------------------------------
+    #
+    # cooked_weight_amount / cooked_weight_unit: exactly what the
+    # user entered (e.g. "1.2" + "kg"), kept as-is for display.
+    #
+    # cooked_weight_grams: normalized value always in grams, computed
+    # at write time. Use this for nutrition-per-gram / per-serving math
+    # so you never have to re-parse units downstream.
+
+    cooked_weight_amount: Mapped[Decimal | None] = mapped_column(
+        Numeric(10, 2),
+        nullable=True,
+    )
+
+    cooked_weight_unit: Mapped[str | None] = mapped_column(
+        Enum(*[u.value for u in CookedWeightUnit], name="cooked_weight_unit_enum"),
+        nullable=True,
+    )
+
+    cooked_weight_grams: Mapped[Decimal | None] = mapped_column(
+        Numeric(10, 2),
+        nullable=True,
+    )
+
     deleted_at: Mapped[datetime | None] = mapped_column(
         TIMESTAMP,
-        nullable=True
+        nullable=True,
     )
 
     user: Mapped["User"] = relationship(

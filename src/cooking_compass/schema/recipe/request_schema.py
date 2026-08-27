@@ -1,8 +1,9 @@
 from typing import Literal
 
-from pydantic import BaseModel, Field, HttpUrl, field_validator
+from pydantic import BaseModel, Field, HttpUrl, field_validator, model_validator
 
-from .components_schema import (
+from cooking_compass.schema.recipe.components_schema import (
+    CookedWeightUnit,
     IngredientComponent,
     InstructionComponent,
 )
@@ -121,7 +122,10 @@ class CreateRecipeRequest(BaseModel):
         ge=0,
     )
 
-    servings: int = Field(
+    # Now optional — not every recipe has a well-defined serving count
+    # (e.g. a sauce, a spice blend, a "makes as much as you like" recipe).
+    servings: int | None = Field(
+        default=None,
         ge=1,
         le=1000,
     )
@@ -153,6 +157,17 @@ class CreateRecipeRequest(BaseModel):
         max_length=50,
     )
 
+    cooked_weight_amount: float | None = Field(
+        default=None,
+        gt=0,
+        description="Weight/volume of the finished, cooked dish",
+    )
+
+    cooked_weight_unit: CookedWeightUnit | None = Field(
+        default=None,
+        description="Unit for cooked_weight_amount: g, kg, oz, l, or ml",
+    )
+
     @field_validator("category_ids")
     @classmethod
     def validate_category_ids(cls, value: list[int]) -> list[int]:
@@ -180,6 +195,19 @@ class CreateRecipeRequest(BaseModel):
             raise ValueError("Duplicate tag names are not allowed")
 
         return cleaned
+
+    @model_validator(mode="after")
+    def validate_cooked_weight_pair(self):
+        has_amount = self.cooked_weight_amount is not None
+        has_unit = self.cooked_weight_unit is not None
+
+        if has_amount != has_unit:
+            raise ValueError(
+                "cooked_weight_amount and cooked_weight_unit must be "
+                "provided together"
+            )
+
+        return self
 
 
 # ---------------------------------------------------------

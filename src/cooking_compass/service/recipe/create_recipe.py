@@ -2,6 +2,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
 from cooking_compass.core.db import SessionLocal
+from cooking_compass.schema.recipe.components_schema import to_grams
 from cooking_compass.models.recipe import Recipe
 from cooking_compass.models.recipe_categories import RecipeCategory
 from cooking_compass.models.recipe_ingredients import RecipeIngredient
@@ -123,6 +124,20 @@ async def create_recipe_service(
             "image_urls",
         }
     )
+
+    # ---------------------------------------------------------
+    # Normalize cooked weight to grams for consistent downstream
+    # math (nutrition per serving, per-gram calculations, etc.)
+    # ---------------------------------------------------------
+    if request.cooked_weight_amount is not None:
+        recipe_data["cooked_weight_grams"] = to_grams(
+            request.cooked_weight_amount,
+            request.cooked_weight_unit,
+        )
+
+    # cooked_weight_unit comes through model_dump() as the enum's
+    # value (a plain string), which SQLAlchemy's Enum column accepts
+    # directly, so no extra conversion is needed here.
 
     async with SessionLocal() as session:
         try:

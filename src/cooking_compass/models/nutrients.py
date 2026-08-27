@@ -1,3 +1,4 @@
+from enum import Enum
 from typing import TYPE_CHECKING
 
 from sqlalchemy import BigInteger, String, Text, Index
@@ -9,6 +10,12 @@ from .base import Base, TimestampMixin
 if TYPE_CHECKING:
     from .ingredient_nutrients import IngredientNutrient
     from .recipe_nutrition import RecipeNutrition
+
+
+class NutrientType(str, Enum):
+    MACRO = "macro"
+    MICRO = "micro"
+    OTHER = "other"
 
 
 class Nutrient(TimestampMixin, Base):
@@ -34,6 +41,12 @@ class Nutrient(TimestampMixin, Base):
     unit: Mapped[str] = mapped_column(
         String(30),
         nullable=False,
+    )
+
+    nutrition_type: Mapped[NutrientType] = mapped_column(
+        String(20),
+        nullable=False,
+        default=NutrientType.OTHER,
     )
 
     description: Mapped[str | None] = mapped_column(
