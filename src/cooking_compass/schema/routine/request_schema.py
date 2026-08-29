@@ -3,12 +3,11 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
 
-from .components_schema import RecurrenceComponent
+from cooking_compass.schema.routine.components_schema import (
+    RecurrenceComponent,
+    RoutineItemRequest,
+)
 
-
-# ---------------------------------------------------------
-# GET /routines
-# ---------------------------------------------------------
 
 class GetRoutinesRequest(BaseModel):
     scope: Literal["mine", "feed"] = "mine"
@@ -27,7 +26,6 @@ class GetRoutinesRequest(BaseModel):
     sort_by: Literal[
         "created_at",
         "name",
-        "start_date",
     ] = "created_at"
 
     sort_order: Literal[
@@ -35,10 +33,6 @@ class GetRoutinesRequest(BaseModel):
         "desc",
     ] = "desc"
 
-
-# ---------------------------------------------------------
-# GET /routines/search
-# ---------------------------------------------------------
 
 class SearchRoutinesRequest(BaseModel):
     q: str = Field(
@@ -62,7 +56,6 @@ class SearchRoutinesRequest(BaseModel):
     sort_by: Literal[
         "created_at",
         "name",
-        "start_date",
     ] = "created_at"
 
     sort_order: Literal[
@@ -71,14 +64,10 @@ class SearchRoutinesRequest(BaseModel):
     ] = "desc"
 
 
-# ---------------------------------------------------------
-# POST /routines
-# ---------------------------------------------------------
-
 class CreateRoutineRequest(BaseModel):
     name: str = Field(
         min_length=1,
-        max_length=255,
+        max_length=200,
     )
 
     description: str | None = Field(
@@ -86,56 +75,52 @@ class CreateRoutineRequest(BaseModel):
         max_length=5000,
     )
 
-    start_date: date
-
-    end_date: date | None = None
-
-    recipe_ids: list[int] = Field(
+    items: list[RoutineItemRequest] = Field(
         min_length=1,
         max_length=100,
     )
 
-    recurrence: RecurrenceComponent | None = None
+    recurrence: RecurrenceComponent
 
-    @field_validator("recipe_ids")
+    @field_validator("items")
     @classmethod
-    def validate_recipe_ids(
+    def validate_items(
         cls,
-        value: list[int],
-    ) -> list[int]:
-        if any(recipe_id <= 0 for recipe_id in value):
-            raise ValueError(
-                "Recipe IDs must be greater than 0"
-            )
+        value: list[RoutineItemRequest],
+    ) -> list[RoutineItemRequest]:
 
-        if len(value) != len(set(value)):
+        recipe_ids = [
+            item.recipe_id
+            for item in value
+        ]
+
+        if len(recipe_ids) != len(set(recipe_ids)):
             raise ValueError(
                 "Duplicate recipe IDs are not allowed"
             )
 
         return value
 
-    @field_validator("end_date")
+    @field_validator("recurrence")
     @classmethod
-    def validate_end_date(
+    def validate_recurrence(
         cls,
-        value: date | None,
-        info,
-    ) -> date | None:
-        start_date = info.data.get("start_date")
+        value: RecurrenceComponent,
+    ) -> RecurrenceComponent:
 
-        if value is not None and start_date is not None:
-            if value < start_date:
-                raise ValueError(
-                    "End date cannot be before start date"
-                )
+        if (
+            value.end_date is not None
+            and value.end_date < value.start_date
+        ):
+            raise ValueError(
+                "Recurrence end date cannot be before start date"
+            )
+
+        if value.frequency != "WEEKLY":
+            value.days_of_week = []
 
         return value
 
-
-# ---------------------------------------------------------
-# PUT /routines/{routine_id}
-# ---------------------------------------------------------
 
 class UpdateRoutineRequest(CreateRoutineRequest):
     pass
