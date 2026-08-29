@@ -1,12 +1,10 @@
 from typing import TYPE_CHECKING
-from datetime import date
 
 from sqlalchemy import (
     BigInteger,
     String,
     Text,
     Enum,
-    Date,
     ForeignKey,
     Index,
     text,
@@ -19,6 +17,7 @@ from .base import Base, TimestampMixin
 if TYPE_CHECKING:
     from .users import User
     from .routine_items import RoutineItem
+    from .routine_recurrence import RoutineRecurrence
 
 
 class Routine(TimestampMixin, Base):
@@ -47,19 +46,13 @@ class Routine(TimestampMixin, Base):
     )
 
     status: Mapped[str] = mapped_column(
-        Enum("ACTIVE", "INACTIVE", "COMPLETED"),
+        Enum(
+            "ACTIVE",
+            "INACTIVE",
+            "COMPLETED",
+        ),
         nullable=False,
         server_default=text("'ACTIVE'"),
-    )
-
-    start_date: Mapped[date | None] = mapped_column(
-        Date,
-        nullable=True,
-    )
-
-    end_date: Mapped[date | None] = mapped_column(
-        Date,
-        nullable=True,
     )
 
     user: Mapped["User"] = relationship(
@@ -73,6 +66,13 @@ class Routine(TimestampMixin, Base):
         cascade="all, delete-orphan",
     )
 
+    recurrence: Mapped["RoutineRecurrence | None"] = relationship(
+        "RoutineRecurrence",
+        back_populates="routine",
+        uselist=False,
+        cascade="all, delete-orphan",
+    )
+
     __table_args__ = (
         Index(
             "idx_routines_user",
@@ -81,10 +81,5 @@ class Routine(TimestampMixin, Base):
         Index(
             "idx_routines_status",
             "status",
-        ),
-        Index(
-            "idx_routines_dates",
-            "start_date",
-            "end_date",
         ),
     )

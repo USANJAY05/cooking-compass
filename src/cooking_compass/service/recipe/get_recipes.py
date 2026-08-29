@@ -186,6 +186,30 @@ async def get_recipes_service(
         recipes = result.scalars().unique().all()
 
         # --------------------------------------------------
+        # Ratings for this page (one query, not one per recipe)
+        # --------------------------------------------------
+        recipe_ids = [recipe.id for recipe in recipes]
+
+        ratings_by_recipe = {}
+
+        if recipe_ids:
+            rating_rows = await session.execute(
+                select(
+                    RecipeRating.recipe_id,
+                    func.coalesce(func.avg(RecipeRating.rating), 0),
+                    func.count(RecipeRating.id),
+                )
+                .where(RecipeRating.recipe_id.in_(recipe_ids))
+                .group_by(RecipeRating.recipe_id)
+            )
+
+            for recipe_id, average, count in rating_rows.all():
+                ratings_by_recipe[recipe_id] = {
+                    "average": float(average or 0),
+                    "count": count,
+                }
+
+        # --------------------------------------------------
         # Build response
         # --------------------------------------------------
         items = []
@@ -219,15 +243,19 @@ async def get_recipes_service(
                     "preparation_time": recipe.preparation_time,
                     "cooking_time": recipe.cooking_time,
                     "servings": int(recipe.servings),
+                    "rating": ratings_by_recipe.get(
+                        recipe.id,
+                        {"average": 0.0, "count": 0},
+                    ),
                 }
             )
 
+        # --------------------------------------------------
+        # Return
+        # --------------------------------------------------
         return {
             "items": items,
             "page": page,
             "limit": limit,
             "total": total,
         }
-
-def get_recipes_service():
-    pass

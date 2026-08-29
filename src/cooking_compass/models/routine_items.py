@@ -1,17 +1,13 @@
 from typing import TYPE_CHECKING
-from datetime import date
 from decimal import Decimal
 
 from sqlalchemy import (
     BigInteger,
     Numeric,
-    Date,
-    SmallInteger,
     Enum,
     ForeignKey,
     Index,
     CheckConstraint,
-    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -21,7 +17,6 @@ from .base import Base, TimestampMixin
 if TYPE_CHECKING:
     from .routines import Routine
     from .recipe import Recipe
-    from .routine_recurrence import RoutineRecurrence
 
 
 class RoutineItem(TimestampMixin, Base):
@@ -45,30 +40,20 @@ class RoutineItem(TimestampMixin, Base):
         nullable=False,
     )
 
-    meal_type: Mapped[str] = mapped_column(
+    quantity: Mapped[Decimal] = mapped_column(
+        Numeric(10, 2),
+        nullable=False,
+    )
+
+    quantity_type: Mapped[str] = mapped_column(
         Enum(
-            "BREAKFAST",
-            "LUNCH",
-            "DINNER",
-            "SNACK",
+            "SERVING",
+            "G",
+            "KG",
+            "ML",
+            "L",
         ),
         nullable=False,
-    )
-
-    scheduled_date: Mapped[date | None] = mapped_column(
-        Date,
-        nullable=True,
-    )
-
-    day_of_week: Mapped[int | None] = mapped_column(
-        SmallInteger,
-        nullable=True,
-    )
-
-    servings: Mapped[Decimal] = mapped_column(
-        Numeric(8, 2),
-        nullable=False,
-        server_default=text("1"),
     )
 
     routine: Mapped["Routine"] = relationship(
@@ -81,17 +66,10 @@ class RoutineItem(TimestampMixin, Base):
         back_populates="routine_items",
     )
 
-    recurrence: Mapped["RoutineRecurrence | None"] = relationship(
-        "RoutineRecurrence",
-        back_populates="routine_item",
-        uselist=False,
-        cascade="all, delete-orphan",
-    )
-
     __table_args__ = (
         CheckConstraint(
-            "day_of_week IS NULL OR day_of_week BETWEEN 1 AND 7",
-            name="chk_routine_day_of_week",
+            "quantity > 0",
+            name="chk_routine_item_quantity",
         ),
         Index(
             "idx_routine_items_routine",
@@ -100,13 +78,5 @@ class RoutineItem(TimestampMixin, Base):
         Index(
             "idx_routine_items_recipe",
             "recipe_id",
-        ),
-        Index(
-            "idx_routine_items_date",
-            "scheduled_date",
-        ),
-        Index(
-            "idx_routine_items_day",
-            "day_of_week",
         ),
     )

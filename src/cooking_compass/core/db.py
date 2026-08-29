@@ -1,8 +1,4 @@
-
-
 from cooking_compass.models.base import Base
-
-
 
 
 import os
@@ -76,6 +72,11 @@ engine = create_async_engine(
     DB_URL,
     echo=True,
     connect_args=connect_args,
+    pool_pre_ping=True,   # test each pooled connection before use;
+                            # avoids handing out a connection the DB
+                            # server already dropped (your 2013 error)
+    pool_recycle=1800,     # recycle connections older than 30 min,
+                            # below typical MySQL wait_timeout defaults
 )
 
 

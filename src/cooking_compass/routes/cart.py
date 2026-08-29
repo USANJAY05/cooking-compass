@@ -1,18 +1,16 @@
-from datetime import date
+from fastapi import APIRouter, Depends, Query
 
-from fastapi import APIRouter, Depends, status
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from cooking_compass.auth.keycloak import get_current_user
+from cooking_compass.core.db import get_db
 
-from cooking_compass.schema.cart.request_schema import (
-    GenerateCartRequest,
-    UpdateCartItemRequest,
-)
+from cooking_compass.utils.ensure_user import ensure_user_exists
+from cooking_compass.utils.check_user_exist import user_exist
 
-from cooking_compass.schema.cart.response_schema import (
-    CartResponse,
-    GenerateCartResponse,
-    UpdateCartItemResponse,
+from cooking_compass.schema.cart.response_schema import CartResponse
+
+from cooking_compass.service.cart.get_cart import (
+    get_cart_service,
 )
 
 
@@ -22,78 +20,27 @@ router = APIRouter(
 )
 
 
-# ---------------------------------------------------------
+# =========================================================
 # GET /cart
-# Get current shopping cart
-# ---------------------------------------------------------
+# Get shopping cart generated from user's routines
+# =========================================================
 @router.get(
     "/",
     response_model=CartResponse,
 )
-def get_cart(
-    from_date: date | None = None,
-    to_date: date | None = None,
-    current_user: dict = Depends(get_current_user),
+@user_exist
+async def get_cart(
+    days: int = Query(
+        default=7,
+        ge=1,
+        le=30,
+        description="Number of days to generate the shopping cart for",
+    ),
+    current_user: dict = Depends(ensure_user_exists),
+    db: AsyncSession = Depends(get_db),
 ):
-    return "get cart"
-
-
-# ---------------------------------------------------------
-# POST /cart/generate
-# Generate cart from routines
-# ---------------------------------------------------------
-@router.post(
-    "/generate",
-    response_model=GenerateCartResponse,
-    status_code=status.HTTP_200_OK,
-)
-def generate_cart(
-    request: GenerateCartRequest,
-    current_user: dict = Depends(get_current_user),
-):
-    return "generate cart"
-
-
-# ---------------------------------------------------------
-# PUT /cart/items/{ingredient_id}
-# Update cart item
-# ---------------------------------------------------------
-@router.put(
-    "/items/{ingredient_id}",
-    response_model=UpdateCartItemResponse,
-)
-def update_cart_item(
-    ingredient_id: int,
-    request: UpdateCartItemRequest,
-    current_user: dict = Depends(get_current_user),
-):
-    return "update cart item"
-
-
-# ---------------------------------------------------------
-# DELETE /cart/items/{ingredient_id}
-# Remove item from cart
-# ---------------------------------------------------------
-@router.delete(
-    "/items/{ingredient_id}",
-    status_code=status.HTTP_204_NO_CONTENT,
-)
-def delete_cart_item(
-    ingredient_id: int,
-    current_user: dict = Depends(get_current_user),
-):
-    return None
-
-
-# ---------------------------------------------------------
-# DELETE /cart
-# Clear entire cart
-# ---------------------------------------------------------
-@router.delete(
-    "/",
-    status_code=status.HTTP_204_NO_CONTENT,
-)
-def clear_cart(
-    current_user: dict = Depends(get_current_user),
-):
-    return None
+    return await get_cart_service(
+        days=days,
+        current_user=current_user,
+        db=db,
+    )
