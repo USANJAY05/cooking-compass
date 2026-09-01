@@ -11,6 +11,10 @@ from cooking_compass.auth.keycloak import get_current_user
 from cooking_compass.core.db import get_db
 from cooking_compass.utils.check_user_exist import user_exist
 
+from cooking_compass.utils.cache_invalidation import (
+    invalidate_routine,
+)
+
 from cooking_compass.schema.routine.request_schema import (
     CreateRoutineRequest,
     UpdateRoutineRequest,
@@ -194,11 +198,23 @@ async def create_routine(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
-    return await create_routine_service(
+    result = await create_routine_service(
         db=db,
         user_id=_user_id(current_user),
         request=request,
     )
+
+    # -------------------------------------------------------
+    # Invalidate cache
+    # -------------------------------------------------------
+    # A new routine changes what /routines (list/search) and
+    # any future GET /routines/{id} for this id should return.
+    # This runs only after create_routine_service has
+    # successfully committed.
+
+    await invalidate_routine()
+
+    return result
 
 
 # =========================================================
@@ -216,12 +232,24 @@ async def update_routine(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
-    return await update_routine_service(
+    result = await update_routine_service(
         db=db,
         user_id=_user_id(current_user),
         routine_id=routine_id,
         request=request,
     )
+
+    # -------------------------------------------------------
+    # Invalidate cache
+    # -------------------------------------------------------
+    # Bumps the ROUTINES namespace version, so the old
+    # cached detail/list/search entries for this routine
+    # are no longer reachable (old keys just expire naturally
+    # via TTL instead of being actively deleted).
+
+    await invalidate_routine()
+
+    return result
 
 
 # =========================================================
@@ -243,6 +271,14 @@ async def delete_routine(
         user_id=_user_id(current_user),
         routine_id=routine_id,
     )
+
+    # -------------------------------------------------------
+    # Invalidate cache
+    # -------------------------------------------------------
+    # Prevents a deleted routine from still being served out
+    # of Redis for up to ROUTINE_CACHE_TTL seconds.
+
+    await invalidate_routine()
 
     return DeleteRoutineResponse(
         message="Routine deleted successfully",

@@ -5,6 +5,11 @@ from fastapi import APIRouter, Depends, Query, status, HTTPException, Path
 from cooking_compass.utils.ensure_user import ensure_user_exists
 from cooking_compass.utils.check_user_exist import user_exist
 
+from cooking_compass.utils.cache_invalidation import (
+    invalidate_recipe,
+    invalidate_recipe_with_rating,
+)
+
 from cooking_compass.schema.recipe.request_schema import (
     CreateOrUpdateRatingRequest,
     CreateRecipeRequest,
@@ -146,10 +151,20 @@ async def create_recipe(
     request: CreateRecipeRequest,
     current_user: dict = Depends(ensure_user_exists),
 ):
-    return await create_recipe_service(
+    result = await create_recipe_service(
         request,
         current_user,
     )
+
+    # -------------------------------------------------------
+    # Invalidate cache
+    # -------------------------------------------------------
+    # A new recipe changes /recipes list/search results
+    # (both "mine" and, if public, "public" scope).
+
+    await invalidate_recipe()
+
+    return result
 
 
 # =========================================================
@@ -166,7 +181,17 @@ async def update_recipe(
     request: UpdateRecipeRequest = None,
     current_user: dict = Depends(ensure_user_exists),
 ):
-    return await update_recipe_service(recipe_id, request, current_user)
+    result = await update_recipe_service(recipe_id, request, current_user)
+
+    # -------------------------------------------------------
+    # Invalidate cache
+    # -------------------------------------------------------
+    # Covers both the detail cache for this recipe_id and
+    # any list/search cache entries that included it.
+
+    await invalidate_recipe()
+
+    return result
 
 
 # =========================================================
@@ -191,6 +216,17 @@ async def delete_recipe(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Recipe not found",
         )
+
+    # -------------------------------------------------------
+    # Invalidate cache
+    # -------------------------------------------------------
+    # Only invalidate after confirming the delete actually
+    # happened (deleted is truthy) — an invalidation before
+    # this check would fire even on a 404, which is harmless
+    # but pointless, so it's placed after the check instead.
+
+    await invalidate_recipe()
+
     return None
 
 
@@ -208,7 +244,19 @@ async def create_or_update_rating(
     request: CreateOrUpdateRatingRequest = None,
     current_user: dict = Depends(ensure_user_exists),
 ):
-    return await create_or_update_rating_service(recipe_id, request, current_user)
+    result = await create_or_update_rating_service(recipe_id, request, current_user)
+
+    # -------------------------------------------------------
+    # Invalidate cache
+    # -------------------------------------------------------
+    # A new/updated rating changes the recipe's average
+    # rating, which is embedded in both the recipe detail
+    # response and any list/search results sorted or
+    # displaying rating.
+
+    await invalidate_recipe_with_rating()
+
+    return result
 
 
 # =========================================================
@@ -233,4 +281,14 @@ async def delete_rating(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Rating not found",
         )
+
+    # -------------------------------------------------------
+    # Invalidate cache
+    # -------------------------------------------------------
+    # Same reasoning as create_or_update_rating: removing a
+    # rating changes the recipe's average, so cached recipe
+    # detail/list/search entries need to be refreshed.
+
+    await invalidate_recipe_with_rating()
+
     return None
