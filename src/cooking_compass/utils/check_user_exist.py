@@ -142,6 +142,15 @@ def user_exist(func):
 
                     user = result.scalars().first()
 
+            if user is None:
+                raise HTTPException(
+                    status_code=500,
+                    detail={
+                        "success": False,
+                        "message": "Unable to create or resolve user",
+                    },
+                )
+
             user_id = user.id
 
             # Cache it now that the user exists.

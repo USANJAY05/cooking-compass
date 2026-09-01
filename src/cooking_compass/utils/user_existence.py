@@ -79,10 +79,11 @@ async def user_existence(email: str) -> bool:
     # Cache result
     # ---------------------------------------------------------
 
-    await cache_set(
-        cache_key,
-        {"exists": exists},
-        ttl=USER_EXISTENCE_CACHE_TTL,
-    )
+    if exists:
+        await cache_set(
+            cache_key,
+            {"exists": True},
+            ttl=USER_EXISTENCE_CACHE_TTL,
+        )
 
     return exists

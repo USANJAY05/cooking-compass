@@ -52,15 +52,8 @@ async def search_recipes_service(
     # Cache key
     # ========================================================
 
-    # `mine` results are user-specific.
-    #
-    # Public results can be shared between users.
-    #
-    # Therefore:
-    #
-    # mine   -> include current user ID
-    # public -> use 0
-    #
+    # Include current user ID in the cache key for all scopes,
+    # because public queries also include user-specific rows.
     cache_key = await build_cache_key_from_data(
         CacheNamespace.RECIPES,
         {
@@ -73,11 +66,7 @@ async def search_recipes_service(
             "limit": limit,
             "sort_by": sort_by,
             "sort_order": sort_order,
-            "current_user_id": (
-                user_id
-                if scope == "mine"
-                else 0
-            ),
+            "current_user_id": user_id,
         },
     )
 
