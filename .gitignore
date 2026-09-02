@@ -13,3 +13,4 @@ wheels/
 .env.dev
 ca.pem
 ca.cer
+.DS_Store
