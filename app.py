@@ -7,7 +7,7 @@ from fastapi import FastAPI
 from cooking_compass.core.db import Base, engine
 from cooking_compass import models
 from cooking_compass.routes.router import router
-
+from fastapi.middleware.cors import CORSMiddleware
 
 load_dotenv(".env.dev")
 
@@ -34,6 +34,14 @@ app = FastAPI(
         "clientId": "your-culinary-app-client-id",
         "usePkceWithAuthorizationCodeGrant": True,
     },
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Update this with your frontend's actual domain in production (e.g., ["https://your-frontend.vercel.app"])
+    allow_credentials=True,
+    allow_methods=["*"],  # Allows all methods including OPTIONS for preflight
+    allow_headers=["*"],
 )
 
 app.include_router(router)

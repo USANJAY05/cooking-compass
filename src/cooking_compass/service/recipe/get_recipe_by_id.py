@@ -16,6 +16,14 @@ from cooking_compass.models.instruction_images import InstructionImage
 from cooking_compass.models.recipe_images import RecipeImage
 from cooking_compass.models.recipe_ratings import RecipeRating
 
+from cooking_compass.utils.cache import (
+    CacheNamespace,
+    build_cache_key_from_data,
+    cache_get,
+    cache_set,
+)
+
+
 def to_decimal(
     value,
     default=Decimal("0"),
@@ -46,11 +54,54 @@ async def get_recipe_by_id_service(
     current_user: dict,
 ):
 
+    # ==========================================================
+    # Cache key
+    # ==========================================================
+    #
+    # We don't know whether the recipe is PUBLIC until we
+    # query the database.
+    #
+    # Therefore we include the current user ID in the cache key.
+    #
+    # This is the safest approach because:
+    #
+    # - Owner can see their own private recipe.
+    # - Another user cannot receive the owner's cached response.
+    # - Public recipes are still cached.
+    #
+    # ==========================================================
+
+    current_user_id = current_user.get("id")
+
+    cache_key = await build_cache_key_from_data(
+        CacheNamespace.RECIPES,
+        {
+            "type": "detail",
+            "recipe_id": recipe_id,
+            "current_user_id": current_user_id,
+        },
+    )
+
+    # ==========================================================
+    # Cache lookup
+    # ==========================================================
+
+    cached_result = await cache_get(
+        cache_key
+    )
+
+    if cached_result is not None:
+        return cached_result
+
+    # ==========================================================
+    # Database
+    # ==========================================================
+
     async with SessionLocal() as session:
 
-        # ====================================================
+        # ======================================================
         # 1. Load Recipe
-        # ====================================================
+        # ======================================================
 
         query = (
             select(Recipe)
@@ -110,11 +161,12 @@ async def get_recipe_by_id_service(
 
         recipe = result.scalar_one_or_none()
 
-        # ====================================================
+        # ======================================================
         # 2. Recipe Not Found
-        # ====================================================
+        # ======================================================
 
         if recipe is None:
+
             raise HTTPException(
                 status_code=404,
                 detail={
@@ -123,9 +175,9 @@ async def get_recipe_by_id_service(
                 },
             )
 
-        # ====================================================
+        # ======================================================
         # 3. Access Check
-        # ====================================================
+        # ======================================================
 
         user_id = current_user.get("id")
 
@@ -137,6 +189,7 @@ async def get_recipe_by_id_service(
             not is_owner
             and recipe.visibility != "PUBLIC"
         ):
+
             raise HTTPException(
                 status_code=404,
                 detail={
@@ -145,9 +198,9 @@ async def get_recipe_by_id_service(
                 },
             )
 
-        # ====================================================
+        # ======================================================
         # 4. Ingredients
-        # ====================================================
+        # ======================================================
 
         ingredients = []
 
@@ -159,6 +212,7 @@ async def get_recipe_by_id_service(
             ingredient_name = None
 
             if item.ingredient is not None:
+
                 ingredient_name = (
                     item.ingredient.name
                 )
@@ -168,22 +222,26 @@ async def get_recipe_by_id_service(
                     "ingredient_id": (
                         item.ingredient_id
                     ),
+
                     "name": ingredient_name,
+
                     "quantity": float(
                         to_decimal(
                             item.quantity
                         )
                     ),
+
                     "unit": item.unit,
+
                     "display_order": (
                         item.display_order
                     ),
                 }
             )
 
-        # ====================================================
+        # ======================================================
         # 5. Instructions
-        # ====================================================
+        # ======================================================
 
         instructions = []
 
@@ -219,9 +277,11 @@ async def get_recipe_by_id_service(
                         "https://",
                     )
                 ):
+
                     reference_image = (
                         storage_key
                     )
+
                     break
 
             instructions.append(
@@ -229,43 +289,48 @@ async def get_recipe_by_id_service(
                     "step_number": (
                         item.step_number
                     ),
+
                     "instruction_text": (
                         item.instruction_text
                     ),
+
                     "timer_seconds": (
                         item.timer_seconds
                     ),
+
                     "tip": item.tip,
+
                     "reference_recipe_id": (
                         item.reference_recipe_id
                     ),
+
                     "reference_image": (
                         reference_image
                     ),
                 }
             )
 
-        # ====================================================
+        # ======================================================
         # 6. Categories
-        # ====================================================
+        # ======================================================
 
         category_ids = [
             item.category_id
             for item in recipe.categories
         ]
 
-        # ====================================================
+        # ======================================================
         # 7. Tags
-        # ====================================================
+        # ======================================================
 
         tag_ids = [
             item.tag_id
             for item in recipe.tags
         ]
 
-        # ====================================================
+        # ======================================================
         # 8. Recipe Images
-        # ====================================================
+        # ======================================================
 
         image_urls = []
 
@@ -292,22 +357,21 @@ async def get_recipe_by_id_service(
                     "https://",
                 )
             ):
+
                 image_urls.append(
                     storage_key
                 )
 
-        # ====================================================
+        # ======================================================
         # 9. Nutrition
-        # ====================================================
+        # ======================================================
 
         nutrition_totals = defaultdict(
             lambda: Decimal("0")
         )
 
         nutrition_units = {}
-
         nutrition_names = {}
-
         nutrition_types = {}
 
         for recipe_ingredient in (
@@ -322,9 +386,9 @@ async def get_recipe_by_id_service(
             if ingredient is None:
                 continue
 
-            # --------------------------------------------
+            # --------------------------------------------------
             # Normalize Unit
-            # --------------------------------------------
+            # --------------------------------------------------
 
             unit = (
                 recipe_ingredient.unit
@@ -332,9 +396,9 @@ async def get_recipe_by_id_service(
                 .lower()
             )
 
-            # --------------------------------------------
+            # --------------------------------------------------
             # Only calculate gram quantities
-            # --------------------------------------------
+            # --------------------------------------------------
 
             if unit not in {
                 "g",
@@ -352,9 +416,9 @@ async def get_recipe_by_id_service(
             if ingredient_quantity <= 0:
                 continue
 
-            # --------------------------------------------
+            # --------------------------------------------------
             # Nutrients
-            # --------------------------------------------
+            # --------------------------------------------------
 
             for ingredient_nutrient in (
                 ingredient.nutrients
@@ -379,9 +443,9 @@ async def get_recipe_by_id_service(
                     )
                 )
 
-                # ----------------------------------------
+                # ------------------------------------------------
                 # Calculate nutrient amount
-                # ----------------------------------------
+                # ------------------------------------------------
 
                 calculated_amount = (
                     amount_per_100g
@@ -393,9 +457,9 @@ async def get_recipe_by_id_service(
                     nutrient_code
                 ] += calculated_amount
 
-                # ----------------------------------------
+                # ------------------------------------------------
                 # Store nutrient metadata
-                # ----------------------------------------
+                # ------------------------------------------------
 
                 nutrition_units[
                     nutrient_code
@@ -409,9 +473,9 @@ async def get_recipe_by_id_service(
                     nutrient_code
                 ] = nutrient.nutrition_type
 
-        # ====================================================
+        # ======================================================
         # 10. Nutrition Per Serving
-        # ====================================================
+        # ======================================================
 
         servings = recipe.servings
 
@@ -437,24 +501,18 @@ async def get_recipe_by_id_service(
                         / servings_decimal
                     )
 
-                    # ----------------------------------------
+                    # --------------------------------------------
                     # Round FIRST
-                    # ----------------------------------------
+                    # --------------------------------------------
 
                     rounded_amount = round(
                         amount_per_serving,
                         2,
                     )
 
-                    # ----------------------------------------
+                    # --------------------------------------------
                     # Skip zero values
-                    #
-                    # Example:
-                    # 0       -> skip
-                    # 0.001   -> 0.00 -> skip
-                    # 0.004   -> 0.00 -> skip
-                    # 0.01    -> include
-                    # ----------------------------------------
+                    # --------------------------------------------
 
                     if rounded_amount <= 0:
                         continue
@@ -487,9 +545,9 @@ async def get_recipe_by_id_service(
                         }
                     )
 
-                # ----------------------------------------
+                # --------------------------------------------
                 # Sort nutrients by code
-                # ----------------------------------------
+                # --------------------------------------------
 
                 nutrition_items.sort(
                     key=lambda item: item["code"]
@@ -500,9 +558,9 @@ async def get_recipe_by_id_service(
                     "items": nutrition_items,
                 }
 
-        # ====================================================
+        # ======================================================
         # 11. Rating
-        # ====================================================
+        # ======================================================
 
         rating_result = await session.execute(
             select(
@@ -535,9 +593,9 @@ async def get_recipe_by_id_service(
             ),
         }
 
-        # ====================================================
+        # ======================================================
         # 12. Cooked Weight
-        # ====================================================
+        # ======================================================
 
         cooked_weight_amount = None
 
@@ -545,6 +603,7 @@ async def get_recipe_by_id_service(
             recipe.cooked_weight_amount
             is not None
         ):
+
             cooked_weight_amount = float(
                 recipe.cooked_weight_amount
             )
@@ -556,9 +615,9 @@ async def get_recipe_by_id_service(
             else None
         )
 
-        # ====================================================
+        # ======================================================
         # 13. Cooked Weight Per Serving
-        # ====================================================
+        # ======================================================
 
         cooked_weight_per_serving = None
 
@@ -590,11 +649,11 @@ async def get_recipe_by_id_service(
                     / servings_decimal
                 )
 
-        # ====================================================
+        # ======================================================
         # 14. Final Response
-        # ====================================================
+        # ======================================================
 
-        return {
+        response = {
             "id": recipe.id,
 
             "name": recipe.name,
@@ -641,3 +700,15 @@ async def get_recipe_by_id_service(
 
             "rating": rating,
         }
+
+    # ==========================================================
+    # Cache response
+    # ==========================================================
+
+    await cache_set(
+        cache_key,
+        response,
+        ttl=300,
+    )
+
+    return response
