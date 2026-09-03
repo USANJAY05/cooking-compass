@@ -38,7 +38,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Update this with your frontend's actual domain in production (e.g., ["https://your-frontend.vercel.app"])
+    allow_origins=["muvethkitchen.netlify.app"],  # Update this with your frontend's actual domain in production (e.g., ["https://your-frontend.vercel.app"])
     allow_credentials=True,
     allow_methods=["*"],  # Allows all methods including OPTIONS for preflight
     allow_headers=["*"],
