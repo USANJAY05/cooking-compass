@@ -34,9 +34,11 @@ async def user_existence(email: str) -> bool:
     # build_cache_key_from_data / hashing here since the
     # identifier is already a single, safe string).
 
+    import hashlib
+    email_hash = hashlib.sha256(email.encode("utf-8")).hexdigest()
     cache_key = await build_cache_key(
         CacheNamespace.USERS,
-        f"exists:{email}",
+        f"exists:{email_hash}",
     )
 
     # ---------------------------------------------------------
@@ -79,10 +81,11 @@ async def user_existence(email: str) -> bool:
     # Cache result
     # ---------------------------------------------------------
 
-    await cache_set(
-        cache_key,
-        {"exists": exists},
-        ttl=USER_EXISTENCE_CACHE_TTL,
-    )
+    if exists:
+        await cache_set(
+            cache_key,
+            {"exists": True},
+            ttl=USER_EXISTENCE_CACHE_TTL,
+        )
 
     return exists

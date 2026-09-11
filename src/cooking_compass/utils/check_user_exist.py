@@ -37,9 +37,11 @@ async def _resolve_user_id(email: str) -> int:
     # Cache key
     # ---------------------------------------------------------
 
+    import hashlib
+    email_hash = hashlib.sha256(email.encode("utf-8")).hexdigest()
     cache_key = await build_cache_key(
         CacheNamespace.USERS,
-        f"id:{email}",
+        f"id:{email_hash}",
     )
 
     # ---------------------------------------------------------
@@ -141,6 +143,15 @@ def user_exist(func):
                     )
 
                     user = result.scalars().first()
+
+            if user is None:
+                raise HTTPException(
+                    status_code=500,
+                    detail={
+                        "success": False,
+                        "message": "Unable to create or resolve user",
+                    },
+                )
 
             user_id = user.id
 
