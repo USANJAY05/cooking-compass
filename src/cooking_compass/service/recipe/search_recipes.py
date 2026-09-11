@@ -27,7 +27,7 @@ async def search_recipes_service(
     limit: int = 20,
     sort_by: str = "created_at",
     sort_order: str = "desc",
-) -> RecipeSearchResponse:
+) -> dict:
     """
     Search recipes by query string, scope, filters, pagination, and sorting.
 
