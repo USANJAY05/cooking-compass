@@ -5,7 +5,7 @@ import hmac
 import os
 from datetime import datetime, timezone
 from urllib.parse import quote
-from uuid import UUID
+from uuid import uuid4
 
 
 B2_REGION = os.getenv("B2_REGION", "us-east-005")
@@ -67,7 +67,7 @@ def generate_presigned_put_url(
     date_stamp = now.strftime("%Y%m%d")
     host = endpoint.removeprefix("https://").removeprefix("http://")
 
-    canonical_uri = f"/{_encode(bucket)}/{quote(object_key, safe="/-_.~")}"  # noqa: E501
+    canonical_uri = f"/{_encode(bucket)}/{quote(object_key, safe='/-_.~')}"
     credential_scope = f"{date_stamp}/{region}/s3/aws4_request"
 
     query = {
@@ -122,4 +122,4 @@ def generate_presigned_put_url(
 
 
 def build_image_key() -> str:
-    return f"images/{UUID(int=int.from_bytes(os.urandom(16), 'big'))}"
+    return f"images/{uuid4()}"
