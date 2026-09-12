@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-import hashlib
-import hmac
 import os
-from datetime import datetime, timezone
-from urllib.parse import quote
 from uuid import uuid4
+
+import boto3
+from botocore.config import Config
 
 
 B2_REGION = os.getenv("B2_REGION", "us-east-005")
@@ -44,12 +43,16 @@ def _required_config() -> tuple[str, str, str, str, str]:
     )
 
 
-def _hmac(key: bytes, value: str) -> bytes:
-    return hmac.new(key, value.encode("utf-8"), hashlib.sha256).digest()
-
-
-def _encode(value: str) -> str:
-    return quote(value, safe="-_.~")
+def _s3_client():
+    endpoint, _, key_id, application_key, region = _required_config()
+    return boto3.client(
+        "s3",
+        endpoint_url=endpoint,
+        aws_access_key_id=key_id,
+        aws_secret_access_key=application_key,
+        region_name=region,
+        config=Config(signature_version="s3v4"),
+    )
 
 
 def generate_presigned_put_url(
@@ -60,65 +63,18 @@ def generate_presigned_put_url(
     expires_in: int = UPLOAD_URL_TTL_SECONDS,
 ) -> str:
     """Generate a short-lived SigV4 PUT URL for Backblaze B2's S3 API."""
-    endpoint, bucket, key_id, application_key, region = _required_config()
-
-    now = datetime.now(timezone.utc)
-    amz_date = now.strftime("%Y%m%dT%H%M%SZ")
-    date_stamp = now.strftime("%Y%m%d")
-    host = endpoint.removeprefix("https://").removeprefix("http://")
-
-    canonical_uri = f"/{_encode(bucket)}/{quote(object_key, safe='/-_.~')}"
-    credential_scope = f"{date_stamp}/{region}/s3/aws4_request"
-
-    query = {
-        "X-Amz-Algorithm": "AWS4-HMAC-SHA256",
-        "X-Amz-Credential": f"{key_id}/{credential_scope}",
-        "X-Amz-Date": amz_date,
-        "X-Amz-Expires": str(expires_in),
-        "X-Amz-SignedHeaders": "content-length;content-type;host",
-    }
-    canonical_query = "&".join(
-        f"{_encode(key)}={_encode(value)}" for key, value in sorted(query.items())
+    _, bucket, _, _, _ = _required_config()
+    return _s3_client().generate_presigned_url(
+        "put_object",
+        Params={
+            "Bucket": bucket,
+            "Key": object_key,
+            "ContentType": content_type,
+            "ContentLength": content_length,
+        },
+        ExpiresIn=expires_in,
+        HttpMethod="PUT",
     )
-
-    canonical_headers = (
-        f"content-length:{content_length}\n"
-        f"content-type:{content_type}\n"
-        f"host:{host}\n"
-    )
-    signed_headers = "content-length;content-type;host"
-    canonical_request = (
-        f"PUT\n{canonical_uri}\n{canonical_query}\n"
-        f"{canonical_headers}\n{signed_headers}\nUNSIGNED-PAYLOAD"
-    )
-
-    string_to_sign = (
-        "AWS4-HMAC-SHA256\n"
-        f"{amz_date}\n"
-        f"{credential_scope}\n"
-        f"{hashlib.sha256(canonical_request.encode('utf-8')).hexdigest()}"
-    )
-
-    signing_key = _hmac(
-        _hmac(
-            _hmac(
-                _hmac(("AWS4" + application_key).encode("utf-8"), date_stamp),
-                region,
-            ),
-            "s3",
-        ),
-        "aws4_request",
-    )
-    query["X-Amz-Signature"] = hmac.new(
-        signing_key,
-        string_to_sign.encode("utf-8"),
-        hashlib.sha256,
-    ).hexdigest()
-
-    encoded_query = "&".join(
-        f"{_encode(key)}={_encode(value)}" for key, value in sorted(query.items())
-    )
-    return f"{endpoint}{canonical_uri}?{encoded_query}"
 
 
 def build_image_key() -> str:
