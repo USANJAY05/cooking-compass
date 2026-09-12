@@ -1,17 +1,18 @@
 from __future__ import annotations
 
-import os
 from uuid import uuid4
 
 import boto3
 from botocore.config import Config
 
+from cooking_compass.core.config import (
+    B2_APPLICATION_KEY,
+    B2_BUCKET,
+    B2_ENDPOINT,
+    B2_KEY_ID,
+    B2_REGION,
+)
 
-B2_REGION = os.getenv("B2_REGION", "us-east-005")
-B2_ENDPOINT = os.getenv("B2_ENDPOINT", f"https://s3.{B2_REGION}.backblazeb2.com")
-B2_BUCKET = os.getenv("B2_BUCKET")
-B2_KEY_ID = os.getenv("B2_KEY_ID")
-B2_APPLICATION_KEY = os.getenv("B2_APPLICATION_KEY")
 
 UPLOAD_URL_TTL_SECONDS = 300
 MAX_IMAGE_SIZE_BYTES = 10 * 1024 * 1024
