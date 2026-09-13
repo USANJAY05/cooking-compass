@@ -5,9 +5,9 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
-# Backblaze B2 S3-compatible storage
-B2_REGION = os.getenv("B2_REGION", "us-east-005")
-B2_ENDPOINT = f"https://s3.{B2_REGION}.backblazeb2.com"
-B2_BUCKET = os.getenv("B2_BUCKET")
-B2_KEY_ID = os.getenv("B2_KEY_ID")
-B2_APPLICATION_KEY = os.getenv("B2_APPLICATION_KEY")
+# S3-compatible object storage (Backblaze B2 / AWS S3)
+STORAGE_REGION = os.getenv("STORAGE_REGION")
+STORAGE_ENDPOINT = os.getenv("STORAGE_ENDPOINT")
+STORAGE_BUCKET = os.getenv("STORAGE_BUCKET")
+STORAGE_ACCESS_KEY_ID = os.getenv("STORAGE_ACCESS_KEY_ID")
+STORAGE_SECRET_ACCESS_KEY = os.getenv("STORAGE_SECRET_ACCESS_KEY")
