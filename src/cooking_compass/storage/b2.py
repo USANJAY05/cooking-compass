@@ -66,7 +66,14 @@ def generate_presigned_put_url(
     content_length: int,
     expires_in: int = UPLOAD_URL_TTL_SECONDS,
 ) -> str:
-    """Generate a short-lived SigV4 PUT URL for S3-compatible object storage."""
+    """Generate a browser-compatible SigV4 PUT URL for S3-compatible storage.
+
+    Content-Length is deliberately not included in the signed request headers.
+    Browsers control Content-Length and Fetch does not allow web applications to
+    set it programmatically. The requested size is still validated by the API,
+    and the actual uploaded object's size is verified with HEAD before the image
+    is persisted to the database.
+    """
     _, bucket, _, _, _ = _required_config()
     return _s3_client().generate_presigned_url(
         "put_object",
@@ -74,7 +81,6 @@ def generate_presigned_put_url(
             "Bucket": bucket,
             "Key": object_key,
             "ContentType": content_type,
-            "ContentLength": content_length,
         },
         ExpiresIn=expires_in,
         HttpMethod="PUT",
