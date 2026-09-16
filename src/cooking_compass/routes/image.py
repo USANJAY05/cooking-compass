@@ -35,7 +35,7 @@ async def create_image_upload_url(
     payload: ImageUploadRequest,
     current_user: dict = Depends(ensure_user_exists),
 ):
-    """Create a 5-minute, size-bound PUT URL for direct client -> storage upload."""
+    """Create a 5-minute PUT URL for direct browser -> storage upload."""
     if not current_user.get("sub"):
         raise HTTPException(status_code=400, detail="Authenticated user subject is missing")
 
@@ -61,6 +61,10 @@ async def create_image_upload_url(
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
+    # Content-Length is intentionally omitted. Browsers control this header and
+    # Fetch does not allow application code to set it. The requested length is
+    # still returned as metadata and is verified against the actual object size
+    # when the recipe is created.
     return ImageUploadResponse(
         upload_url=upload_url,
         object_key=object_key,
@@ -69,6 +73,5 @@ async def create_image_upload_url(
         expires_in=UPLOAD_URL_TTL_SECONDS,
         required_headers={
             "Content-Type": content_type,
-            "Content-Length": str(payload.content_length),
         },
     )
