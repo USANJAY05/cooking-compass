@@ -35,7 +35,7 @@ async def create_image_upload_url(
     payload: ImageUploadRequest,
     current_user: dict = Depends(ensure_user_exists),
 ):
-    """Create a 5-minute, size-bound PUT URL for direct client -> B2 upload."""
+    """Create a 5-minute, size-bound PUT URL for direct client -> storage upload."""
     if not current_user.get("sub"):
         raise HTTPException(status_code=400, detail="Authenticated user subject is missing")
 
@@ -50,7 +50,7 @@ async def create_image_upload_url(
             },
         )
 
-    object_key = f"{build_image_key()}{extension}"
+    object_key = f"{build_image_key(current_user['id'])}{extension}"
     try:
         upload_url = generate_presigned_put_url(
             object_key=object_key,
