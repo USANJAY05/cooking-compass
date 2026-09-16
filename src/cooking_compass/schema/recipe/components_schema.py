@@ -71,6 +71,30 @@ class IngredientComponent(BaseModel):
 
 
 # ============================================================
+# Image
+# ============================================================
+
+
+class ImageReferenceComponent(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    object_key: str = Field(
+        min_length=1,
+        max_length=500,
+    )
+
+    content_type: str = Field(
+        min_length=1,
+        max_length=100,
+    )
+
+    content_length: int = Field(
+        gt=0,
+        le=10 * 1024 * 1024,
+    )
+
+
+# ============================================================
 # Instruction
 # ============================================================
 
@@ -102,7 +126,7 @@ class InstructionComponent(BaseModel):
         gt=0,
     )
 
-    reference_image: str | None = None
+    reference_image: ImageReferenceComponent | None = None
 
 
 # ============================================================
