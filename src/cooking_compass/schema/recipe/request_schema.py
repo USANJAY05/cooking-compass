@@ -1,9 +1,10 @@
 from typing import Literal
 
-from pydantic import BaseModel, Field, HttpUrl, field_validator, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from cooking_compass.schema.recipe.components_schema import (
     CookedWeightUnit,
+    ImageReferenceComponent,
     IngredientComponent,
     InstructionComponent,
 )
@@ -132,10 +133,7 @@ class CreateRecipeRequest(BaseModel):
 
     visibility: Literal["PRIVATE", "PUBLIC"] = "PRIVATE"
 
-    image_urls: list[HttpUrl] = Field(
-        default_factory=list,
-        max_length=10,
-    )
+    thumbnail_image: ImageReferenceComponent | None = None
 
     ingredients: list[IngredientComponent] = Field(
         min_length=1,
