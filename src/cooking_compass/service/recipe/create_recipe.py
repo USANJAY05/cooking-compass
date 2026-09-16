@@ -1,39 +1,35 @@
+from botocore.exceptions import ClientError
+from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
 from cooking_compass.core.db import SessionLocal
-from cooking_compass.schema.recipe.components_schema import to_grams
+from cooking_compass.models.images import Image
+from cooking_compass.models.instruction_images import InstructionImage
 from cooking_compass.models.recipe import Recipe
 from cooking_compass.models.recipe_categories import RecipeCategory
+from cooking_compass.models.recipe_images import RecipeImage
 from cooking_compass.models.recipe_ingredients import RecipeIngredient
 from cooking_compass.models.recipe_instructions import RecipeInstruction
 from cooking_compass.models.recipe_tags import RecipeTag
 from cooking_compass.models.tags import Tag
+from cooking_compass.schema.recipe.components_schema import to_grams
+from cooking_compass.storage.b2 import (
+    ALLOWED_IMAGE_TYPES,
+    head_object,
+)
 
 
 async def _get_or_create_tag_ids(
     session,
     tag_names: list[str],
 ) -> list[int]:
-    """
-    Get existing tag IDs and create missing tags.
-
-    Tag names are:
-    - stripped
-    - converted to lowercase
-    - deduplicated while preserving order
-
-    Uses a nested transaction/savepoint when creating a tag so that
-    a unique-constraint race does not roll back the main recipe transaction.
-    """
-
-    # Normalize, clean, and deduplicate tag names
+    """Get existing tag IDs and create missing tags safely."""
     seen = set()
     normalized = []
 
     for name in tag_names:
         clean = name.strip().lower()
-
         if clean and clean not in seen:
             seen.add(clean)
             normalized.append(clean)
@@ -41,123 +37,143 @@ async def _get_or_create_tag_ids(
     if not normalized:
         return []
 
-    # Fetch existing tags in one query
     result = await session.execute(
         select(Tag).where(Tag.name.in_(normalized))
     )
 
-    existing = {
-        tag.name: tag.id
-        for tag in result.scalars().all()
-    }
+    existing = {tag.name: tag.id for tag in result.scalars().all()}
 
-    # Determine which tags don't exist yet
-    missing = [
-        name
-        for name in normalized
-        if name not in existing
-    ]
+    missing = [name for name in normalized if name not in existing]
 
-    # Create missing tags
     for name in missing:
         try:
-            # Savepoint:
-            # If this INSERT fails, only this nested transaction is rolled back.
             async with session.begin_nested():
                 tag = Tag(name=name)
                 session.add(tag)
-
-                # Flush so the database generates tag.id
                 await session.flush()
-
-            # Nested transaction succeeded
             existing[name] = tag.id
-
         except IntegrityError:
-            # Another request may have created this tag concurrently.
-            # The savepoint was rolled back, but the main transaction remains intact.
-
             result = await session.execute(
                 select(Tag).where(Tag.name == name)
             )
-
             tag = result.scalars().first()
-
             if tag is None:
-                # Something unexpected happened.
                 raise
-
             existing[name] = tag.id
 
-    # Return IDs in the same order as the normalized tag names
-    return [
-        existing[name]
-        for name in normalized
-    ]
+    return [existing[name] for name in normalized]
 
 
-async def create_recipe_service(
-    request,
-    current_user: dict,
-):
+def _validate_image_reference(image_reference, *, user_id: int) -> None:
+    """Validate that an image reference belongs to the authenticated user."""
+    object_key = image_reference.object_key
+    expected_prefix = f"users/{user_id}/images/"
+
+    if not object_key.startswith(expected_prefix):
+        raise HTTPException(
+            status_code=400,
+            detail="Image object_key does not belong to the authenticated user",
+        )
+
+    content_type = image_reference.content_type.lower().strip()
+    if content_type not in ALLOWED_IMAGE_TYPES:
+        raise HTTPException(
+            status_code=415,
+            detail=f"Unsupported image type: {content_type}",
+        )
+
+
+def _read_uploaded_image_metadata(image_reference, *, user_id: int) -> tuple[str, int]:
+    """Verify the uploaded object exists and return its actual type and size."""
+    _validate_image_reference(image_reference, user_id=user_id)
+
+    try:
+        metadata = head_object(object_key=image_reference.object_key)
+    except ClientError as exc:
+        error_code = exc.response.get("Error", {}).get("Code")
+        if error_code in {"404", "NoSuchKey", "NotFound"}:
+            raise HTTPException(
+                status_code=400,
+                detail="Uploaded image was not found in object storage",
+            ) from exc
+        raise HTTPException(
+            status_code=503,
+            detail="Unable to verify uploaded image",
+        ) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    actual_size = int(metadata.get("ContentLength", 0))
+    actual_type = str(
+        metadata.get("ContentType") or image_reference.content_type
+    ).lower().strip()
+    expected_type = image_reference.content_type.lower().strip()
+
+    if actual_size <= 0 or actual_size != image_reference.content_length:
+        raise HTTPException(
+            status_code=400,
+            detail="Uploaded image size does not match the upload metadata",
+        )
+
+    if actual_type != expected_type:
+        raise HTTPException(
+            status_code=400,
+            detail="Uploaded image content type does not match the upload metadata",
+        )
+
+    return actual_type, actual_size
+
+
+def _create_image_record(session, *, image_reference, user_id: int) -> Image:
+    """Verify an uploaded object and create its database image record."""
+    content_type, content_length = _read_uploaded_image_metadata(
+        image_reference,
+        user_id=user_id,
+    )
+
+    image = Image(
+        storage_key=image_reference.object_key,
+        mime_type=content_type,
+        file_size=content_length,
+    )
+    session.add(image)
+    return image
+
+
+async def create_recipe_service(request, current_user: dict):
     """
-    Create a recipe and all related records.
+    Create a recipe and all related records in one transaction.
 
-    Creates:
-    - Recipe
-    - RecipeCategory
-    - RecipeIngredient
-    - RecipeInstruction
-    - Tag
-    - RecipeTag
-
-    Everything is committed as one transaction.
+    Images are uploaded directly from the client to S3-compatible storage
+    using presigned PUT URLs. This transaction only receives object keys,
+    verifies those objects exist, and creates the database associations.
     """
+    user_id = current_user["id"]
 
-    # Remove nested/relationship data from Recipe model data
     recipe_data = request.model_dump(
         exclude={
             "ingredients",
             "instructions",
             "category_ids",
             "tag_names",
-            "image_urls",
+            "thumbnail_image",
         }
     )
 
-    # ---------------------------------------------------------
-    # Normalize cooked weight to grams for consistent downstream
-    # math (nutrition per serving, per-gram calculations, etc.)
-    # ---------------------------------------------------------
     if request.cooked_weight_amount is not None:
         recipe_data["cooked_weight_grams"] = to_grams(
             request.cooked_weight_amount,
             request.cooked_weight_unit,
         )
 
-    # cooked_weight_unit comes through model_dump() as the enum's
-    # value (a plain string), which SQLAlchemy's Enum column accepts
-    # directly, so no extra conversion is needed here.
-
     async with SessionLocal() as session:
         try:
-            # ---------------------------------------------------------
-            # 1. Create recipe
-            # ---------------------------------------------------------
-
             recipe = Recipe(
                 **recipe_data,
-                user_id=current_user["id"],
+                user_id=user_id,
             )
-
             session.add(recipe)
-
-            # Flush so recipe.id becomes available
             await session.flush()
-
-            # ---------------------------------------------------------
-            # 2. Create recipe categories
-            # ---------------------------------------------------------
 
             if request.category_ids:
                 session.add_all(
@@ -167,10 +183,6 @@ async def create_recipe_service(
                     )
                     for category_id in request.category_ids
                 )
-
-            # ---------------------------------------------------------
-            # 3. Create recipe ingredients
-            # ---------------------------------------------------------
 
             if request.ingredients:
                 session.add_all(
@@ -184,35 +196,53 @@ async def create_recipe_service(
                     for ingredient in request.ingredients
                 )
 
-            # ---------------------------------------------------------
-            # 4. Create recipe instructions
-            # ---------------------------------------------------------
-
-            if request.instructions:
-                session.add_all(
-                    RecipeInstruction(
-                        recipe_id=recipe.id,
-                        step_number=step.step_number,
-                        instruction_text=step.instruction_text,
-                        timer_seconds=step.timer_seconds,
-                        tip=step.tip,
-                        reference_recipe_id=step.reference_recipe_id,
-                    )
-                    for step in request.instructions
+            for step in request.instructions:
+                instruction = RecipeInstruction(
+                    recipe_id=recipe.id,
+                    step_number=step.step_number,
+                    instruction_text=step.instruction_text,
+                    timer_seconds=step.timer_seconds,
+                    tip=step.tip,
+                    reference_recipe_id=step.reference_recipe_id,
                 )
+                session.add(instruction)
+                await session.flush()
 
-            # ---------------------------------------------------------
-            # 5. Get/create tags
-            # ---------------------------------------------------------
+                if step.reference_image is not None:
+                    image = _create_image_record(
+                        session,
+                        image_reference=step.reference_image,
+                        user_id=user_id,
+                    )
+                    await session.flush()
+                    session.add(
+                        InstructionImage(
+                            instruction_id=instruction.id,
+                            image_id=image.id,
+                            display_order=1,
+                        )
+                    )
+
+            if request.thumbnail_image is not None:
+                image = _create_image_record(
+                    session,
+                    image_reference=request.thumbnail_image,
+                    user_id=user_id,
+                )
+                await session.flush()
+                session.add(
+                    RecipeImage(
+                        recipe_id=recipe.id,
+                        image_id=image.id,
+                        image_type="THUMBNAIL",
+                        display_order=1,
+                    )
+                )
 
             tag_ids = await _get_or_create_tag_ids(
                 session,
                 request.tag_names,
             )
-
-            # ---------------------------------------------------------
-            # 6. Create recipe-tag relationships
-            # ---------------------------------------------------------
 
             if tag_ids:
                 session.add_all(
@@ -223,27 +253,10 @@ async def create_recipe_service(
                     for tag_id in tag_ids
                 )
 
-            # ---------------------------------------------------------
-            # 7. Image URLs
-            # ---------------------------------------------------------
-            #
-            # image_urls is currently excluded from recipe_data.
-            # Add image upload/storage logic here later.
-            #
-
-            # ---------------------------------------------------------
-            # 8. Commit everything
-            # ---------------------------------------------------------
-
             await session.commit()
-
-            # Refresh recipe with database-generated values
             await session.refresh(recipe)
-
             return recipe
 
         except Exception:
-            # Roll back the entire recipe transaction if anything
-            # outside the tag savepoints fails.
             await session.rollback()
             raise
