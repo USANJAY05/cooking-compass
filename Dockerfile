@@ -13,7 +13,7 @@ ENV UV_COMPILE_BYTECODE=1 \
 # Install dependencies
 COPY pyproject.toml uv.lock README.md ./
 
-RUN uv sync --frozen --no-install-project --no-dev
+RUN uv sync --no-install-project --no-dev
 
 # Copy application
 COPY app.py .
@@ -21,7 +21,7 @@ COPY src ./src
 COPY ca.cer .
 
 # Install project
-RUN uv sync --frozen --no-dev
+RUN uv sync --no-dev
 
 
 # ---------- Production stage ----------
