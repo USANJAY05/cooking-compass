@@ -143,3 +143,7 @@ The database and Redis must be reachable from the container. Configure productio
 ## Deployment
 
 On pushes to the configured branches, GitHub Actions builds and publishes `usanjay05/cooking-compass` Docker images tagged `latest` and with the commit SHA, then triggers the configured Render deploy hook. The workflow expects Docker Hub credentials, `DB_CERT`, and `RENDER_DEPLOY_HOOK` to be set as repository secrets.
+
+## License
+
+This project is licensed under the [MIT License](LICENSE). You may use, modify, and distribute it, provided you retain the copyright and license notice.
