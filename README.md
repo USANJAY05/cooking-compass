@@ -16,6 +16,21 @@ Cooking Compass is a FastAPI backend for discovering, creating, and organizing r
 
 The application is a modular monolith. `app.py` creates the FastAPI application, sets up database tables during startup, and mounts the versioned router.
 
+```mermaid
+flowchart LR
+    Client[Web and mobile clients] -->|REST /api/v1| API[FastAPI app]
+    Client -->|Sign in and obtain token| KC[Keycloak]
+    API --> Routes[Feature routes]
+    Routes --> Auth[JWT validation]
+    Auth <-->|JWKS keys| KC
+    Routes --> Services[Feature services]
+    Services --> Models[SQLAlchemy models]
+    Models -->|Async SQL| MySQL[(MySQL)]
+    Services <-->|Cache reads and invalidation| Redis[(Redis)]
+```
+
+Requests enter through the versioned FastAPI routes. Authenticated operations validate Keycloak tokens, feature services coordinate application logic, SQLAlchemy persists data in MySQL, and Redis holds cached data.
+
 ```text
 app.py
 └── src/cooking_compass/
